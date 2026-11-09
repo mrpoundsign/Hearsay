@@ -80,6 +80,7 @@ type CrowdConfig struct {
 
 // AccessibilityConfig configures UI scaling, high-contrast mode, mini player, and global hotkeys.
 type AccessibilityConfig struct {
+	UIScale          string       `json:"ui_scale"`
 	FontScale        float32      `json:"font_scale"`
 	HighContrast     bool         `json:"high_contrast"`
 	ShowChannelIcons bool         `json:"show_channel_icons"`
@@ -184,6 +185,7 @@ func DefaultConfig() *Config {
 			SpeakNoTextEvents:  false,
 		},
 		Accessibility: AccessibilityConfig{
+			UIScale:         "1.0",
 			FontScale:       1.0,
 			HighContrast:    false,
 			AlwaysOnTopMini: true,
@@ -249,6 +251,11 @@ func (c *Config) Normalize() {
 	}
 	if c.Accessibility.FontScale < 0.8 || c.Accessibility.FontScale > 2.5 {
 		c.Accessibility.FontScale = 1.0
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Accessibility.UIScale)) {
+	case "0.85", "85%", "0.9", "90%", "1.0", "1", "100%", "1.15", "115%", "1.25", "125%", "1.5", "1.50", "150%", "auto":
+	default:
+		c.Accessibility.UIScale = "1.0"
 	}
 	if strings.TrimSpace(c.Accessibility.Hotkeys.PauseResume) == "" {
 		c.Accessibility.Hotkeys.PauseResume = "Ctrl+Shift+P"

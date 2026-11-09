@@ -49,17 +49,31 @@ func (cc *CrowdController) Evaluate(ev chat.Event, cleanedText string, slot conf
 		return CrowdEvalResult{Allow: false, Reason: "slot_muted"}
 	}
 
-	userLower := strings.ToLower(strings.TrimSpace(ev.UserName))
-	if userLower == "" {
-		userLower = strings.ToLower(strings.TrimSpace(ev.DisplayName))
+	plat := strings.ToLower(strings.TrimSpace(ev.Platform))
+	if plat == "" {
+		plat = strings.ToLower(strings.TrimSpace(slot.Platform))
 	}
 
-	// 1. Check ignored/muted chatters first
-	if userLower != "" && containsFold(cfg.Identity.IgnoredChatters, userLower) {
+	userLogin := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ev.UserName)), "@")
+	userDisplay := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ev.DisplayName)), "@")
+	userLower := userLogin
+	if userLower == "" {
+		userLower = userDisplay
+	}
+
+	// 1. Skip the listener's own chat messages (when typing in chat yourself, you don't want TTS reading your own messages back to you)
+	if (userLogin != "" && matchesPlatformIdentity(plat, userLogin, cfg.Identity.MyUsernames)) ||
+		(userDisplay != "" && matchesPlatformIdentity(plat, userDisplay, cfg.Identity.MyUsernames)) {
+		return CrowdEvalResult{Allow: false, Reason: "own_message"}
+	}
+
+	// 2. Check ignored/muted chatters
+	if (userLogin != "" && matchesPlatformIdentity(plat, userLogin, cfg.Identity.IgnoredChatters)) ||
+		(userDisplay != "" && matchesPlatformIdentity(plat, userDisplay, cfg.Identity.IgnoredChatters)) {
 		return CrowdEvalResult{Allow: false, Reason: "muted_chatter"}
 	}
 
-	// 2. Check non-chat events without text (follows, shares, gift streaks)
+	// 3. Check non-chat events without text (follows, shares, gift streaks)
 	trimmedText := strings.TrimSpace(cleanedText)
 	speakNoText := cfg.Crowd.SpeakNoTextEvents
 	if slot.SpeakNoTextEvents != nil {
@@ -81,11 +95,14 @@ func (cc *CrowdController) Evaluate(ev chat.Event, cleanedText string, slot conf
 		return CrowdEvalResult{Allow: false, Reason: "empty_message"}
 	}
 
-	// 3. Detect @mention or reply to viewer's configured username(s)
-	isMention := matchesMyUsernames(ev, cfg.Identity.MyUsernames)
+	// 4. Detect @mention or reply to viewer's configured username(s) on this platform
+	isMention := matchesMyUsernames(plat, ev, cfg.Identity.MyUsernames)
+	chanClean := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(slot.Channel)), "@")
 	isBroadcaster := hasRoleFold(ev.Roles, "broadcaster", "owner", "streamer") ||
-		strings.EqualFold(userLower, strings.TrimPrefix(strings.ToLower(slot.Channel), "@"))
-	isPriorityFriend := userLower != "" && containsFold(cfg.Identity.PriorityChatters, userLower)
+		(userLogin != "" && strings.EqualFold(userLogin, chanClean)) ||
+		(userDisplay != "" && strings.EqualFold(userDisplay, chanClean))
+	isPriorityFriend := (userLogin != "" && matchesPlatformIdentity(plat, userLogin, cfg.Identity.PriorityChatters)) ||
+		(userDisplay != "" && matchesPlatformIdentity(plat, userDisplay, cfg.Identity.PriorityChatters))
 	isPaidOrMajorTextEvent := (ev.Kind == chat.EventKindCheer ||
 		ev.Kind == chat.EventKindSub ||
 		ev.Kind == chat.EventKindResub ||
@@ -226,17 +243,55 @@ func IsShortHypeSpam(text string) bool {
 	return false
 }
 
-func matchesMyUsernames(ev chat.Event, myUsernames []string) bool {
+func parsePlatformHandle(raw string) (plat string, handle string) {
+	trimmed := strings.TrimSpace(raw)
+	if before, after, ok := strings.Cut(trimmed, ":"); ok {
+		p := normalizePlatformAlias(before)
+		h := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(after)), "@")
+		if p != "" && h != "" {
+			return p, h
+		}
+	}
+	return "", strings.TrimPrefix(strings.ToLower(trimmed), "@")
+}
+
+func matchesPlatformIdentity(eventPlatform string, candidateUser string, list []string) bool {
+	target := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(candidateUser)), "@")
+	if target == "" {
+		return false
+	}
+	evPlat := normalizePlatformAlias(eventPlatform)
+	for _, item := range list {
+		itemPlat, itemHandle := parsePlatformHandle(item)
+		if itemHandle == "" {
+			continue
+		}
+		if itemPlat != "" && evPlat != "" && itemPlat != evPlat {
+			continue
+		}
+		if strings.EqualFold(itemHandle, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesMyUsernames(eventPlatform string, ev chat.Event, myUsernames []string) bool {
 	if len(myUsernames) == 0 {
 		return false
 	}
+	evPlat := normalizePlatformAlias(eventPlatform)
 	lowerMsg := strings.ToLower(ev.Text)
 	for _, rawName := range myUsernames {
-		name := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(rawName), "@"))
+		itemPlat, name := parsePlatformHandle(rawName)
 		if name == "" {
 			continue
 		}
-		if ev.IsReply && strings.EqualFold(strings.TrimPrefix(ev.ReplyToUser, "@"), name) {
+		// Ignore @mentions configured specifically for a different streaming platform
+		if itemPlat != "" && evPlat != "" && itemPlat != evPlat {
+			continue
+		}
+		if ev.IsReply && strings.EqualFold(strings.TrimPrefix(strings.TrimSpace(ev.ReplyToUser), "@"), name) {
 			return true
 		}
 		if containsFold(ev.Mentions, name) {

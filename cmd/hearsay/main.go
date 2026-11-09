@@ -57,6 +57,16 @@ func run() error {
 	flag.Parse()
 	_ = logFlag
 
+	if os.Getenv("FYNE_DISABLE_DPI_DETECTION") == "" && os.Getenv("FYNE_SCALE") == "" {
+		initialUIScale := ui.UIScale100
+		if locs, lErr := config.ProductionLocations(); lErr == nil {
+			if preCfg, cErr := config.Load(locs.ConfigFile); cErr == nil && preCfg != nil && preCfg.Accessibility.UIScale != "" {
+				initialUIScale = preCfg.Accessibility.UIScale
+			}
+		}
+		ui.ApplyUIScale(nil, initialUIScale, 1.0, false)
+	}
+
 	myApp := fyneapp.NewWithID(config.AppID)
 	myApp.SetIcon(assets.AppIcon)
 

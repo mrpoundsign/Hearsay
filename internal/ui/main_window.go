@@ -39,6 +39,7 @@ type MainWindow struct {
 	activeBadgeLbl *widget.Label
 	nowSpeakingLbl *widget.Label
 	lastStatusText string
+	uiScaleSel     *widget.Select
 	fontScaleSel   *widget.Select
 	highContrastCk *widget.Check
 	speakEmotesCk  *widget.Check
@@ -90,7 +91,7 @@ func NewMainWindow(app fyne.App, session *listener.Session, devEnum func() ([]au
 		devEnum = audio.EnumeratePlaybackDevices
 	}
 	cfg := session.ConfigSnapshot()
-	app.Settings().SetTheme(NewHearsayTheme(cfg.Accessibility.FontScale, cfg.Accessibility.HighContrast))
+	ApplyUIScale(app, cfg.Accessibility.UIScale, cfg.Accessibility.FontScale, cfg.Accessibility.HighContrast)
 
 	w := app.NewWindow("Hearsay " + AppVersion + " — Multi-Stream Live Chat Reader & Audio Mixer")
 	w.Resize(fyne.NewSize(1180, 740))
@@ -148,6 +149,17 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	mw.lastStatusText = "Idle — Listening for chat..."
 	mw.nowSpeakingLbl = widget.NewLabelWithStyle(mw.lastStatusText, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
 	mw.nowSpeakingLbl.Truncation = fyne.TextTruncateEllipsis
+
+	mw.uiScaleSel = widget.NewSelect(UIScaleOptions(), func(selected string) {
+		mode := ParseUIScaleLabel(selected)
+		_ = mw.Session.UpdateConfig(func(c *config.Config) {
+			c.Accessibility.UIScale = mode
+		})
+		sc := mw.Session.ConfigSnapshot()
+		ApplyUIScale(mw.App, sc.Accessibility.UIScale, sc.Accessibility.FontScale, sc.Accessibility.HighContrast)
+		mw.refreshLog()
+	})
+	mw.uiScaleSel.SetSelected(FormatUIScaleLabel(cfg.Accessibility.UIScale))
 
 	scaleOptions := []string{"100%", "125%", "150%", "175%"}
 	mw.fontScaleSel = widget.NewSelect(scaleOptions, func(selected string) {
@@ -211,6 +223,8 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 		nil, nil,
 		mw.activeBadgeLbl,
 		container.NewHBox(
+			widget.NewLabel("UI:"),
+			mw.uiScaleSel,
 			widget.NewLabel("Text:"),
 			mw.fontScaleSel,
 			mw.highContrastCk,
@@ -498,10 +512,10 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			msgLbl.Wrapping = fyne.TextWrapWord
 
 			replayBtn := mw.newTipBtn("", theme.MediaReplayIcon(), "Replay this message aloud", nil)
-			friendBtn := mw.newTipBtn("VIP", nil, "Toggle Priority VIP/Friend (always spoken, bypasses Crowd Control)", nil)
-			voiceBtn := mw.newTipBtn("Voice", nil, "Assign a specific neural voice to this chatter", nil)
-			muteBtn := mw.newTipBtn("", theme.VolumeMuteIcon(), "Mute / ignore all future messages from this chatter", nil)
-			actions := container.NewHBox(replayBtn, friendBtn, voiceBtn, muteBtn)
+			replayBtn.Importance = widget.LowImportance
+			moreBtn := mw.newTipBtn("", theme.MoreHorizontalIcon(), "More actions (VIP, Assign Voice, Mute)", nil)
+			moreBtn.Importance = widget.LowImportance
+			actions := container.NewHBox(replayBtn, moreBtn)
 
 			return container.NewBorder(nil, nil, prefixBox, actions, msgLbl)
 		},
@@ -530,9 +544,7 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			userTxt := prefixBox.Objects[4].(*canvas.Text)
 
 			replayBtn := actions.Objects[0].(*TooltipButton)
-			friendBtn := actions.Objects[1].(*TooltipButton)
-			voiceBtn := actions.Objects[2].(*TooltipButton)
-			muteBtn := actions.Objects[3].(*TooltipButton)
+			moreBtn := actions.Objects[1].(*TooltipButton)
 
 			statusLbl.SetText(formatLogBadge(entry))
 			platImg.Resource = assets.PlatformIcon(entry.Platform)
@@ -583,24 +595,35 @@ func (mw *MainWindow) buildLiveLogWidget() {
 				mw.hideTooltip(nil)
 				mw.Session.ReplayEntry(entryID)
 			}
-			friendBtn.SetTooltip(fmt.Sprintf("Toggle %s as Priority VIP/Friend (bypasses Crowd Control)", chatter))
-			friendBtn.OnTapped = func() {
+			moreBtn.SetTooltip(fmt.Sprintf("More actions for %s (VIP, Voice, Mute)", chatter))
+			moreBtn.OnTapped = func() {
 				mw.hideTooltip(nil)
-				mw.Session.TogglePriorityFriend(chatter)
-				mw.refreshLog()
-			}
-			voiceBtn.SetTooltip("Assign a custom neural TTS voice to " + chatter)
-			voiceBtn.OnTapped = func() {
-				mw.hideTooltip(nil)
-				mw.showAssignVoiceDialog(chatter)
-			}
-			muteBtn.SetTooltip("Mute / ignore " + chatter)
-			muteBtn.OnTapped = func() {
-				mw.hideTooltip(nil)
-				mw.Session.MuteChatter(chatter)
+				mw.showChatterActionsMenu(moreBtn, chatter)
 			}
 		},
 	)
+}
+
+func (mw *MainWindow) showChatterActionsMenu(anchor fyne.CanvasObject, chatter string) {
+	if mw.Window == nil || mw.Window.Canvas() == nil {
+		return
+	}
+	vipItem := fyne.NewMenuItem("Toggle Priority VIP / Friend ("+chatter+")", func() {
+		mw.Session.TogglePriorityFriend(chatter)
+		mw.refreshLog()
+	})
+	voiceItem := fyne.NewMenuItem("Assign Neural Voice to "+chatter+"…", func() {
+		mw.showAssignVoiceDialog(chatter)
+	})
+	muteItem := fyne.NewMenuItem("Mute / Ignore "+chatter, func() {
+		mw.Session.MuteChatter(chatter)
+		mw.refreshLog()
+	})
+	menu := fyne.NewMenu("", vipItem, voiceItem, fyne.NewMenuItemSeparator(), muteItem)
+
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
+	pos = pos.Add(fyne.NewPos(0, anchor.Size().Height))
+	widget.ShowPopUpMenuAtPosition(menu, mw.Window.Canvas(), pos)
 }
 
 func (mw *MainWindow) buildMiniPlayerRoot() fyne.CanvasObject {
@@ -1233,6 +1256,8 @@ func formatLogBadge(entry listener.LogEntry) string {
 
 func formatSkipReason(reason string) string {
 	switch reason {
+	case "own_message":
+		return "[YOU]"
 	case "empty_message":
 		return "[SKIP: Emote]"
 	case "short_hype_spam":

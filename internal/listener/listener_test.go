@@ -44,7 +44,7 @@ func TestParseTargetInput(t *testing.T) {
 
 func TestCrowdControllerFilteringAndPriorityBypass(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Identity.MyUsernames = []string{"BlindViewer"}
+	cfg.Identity.MyUsernames = []string{"BlindViewer", "mrpoundsign", "youtube:@MyYTHandle"}
 	cfg.Identity.PriorityChatters = []string{"BestFriend"}
 	cfg.Identity.IgnoredChatters = []string{"ToxicUser"}
 	cfg.Crowd.ChatterCooldownSec = 10
@@ -59,6 +59,30 @@ func TestCrowdControllerFilteringAndPriorityBypass(t *testing.T) {
 
 	cc := NewCrowdController()
 	now := time.Now()
+
+	// 0. Listener's own messages (matching MyUsernames case-insensitively or with @) are skipped (Reason="own_message")
+	resOwn := cc.Evaluate(chat.Event{
+		Platform:    "twitch",
+		Kind:        chat.EventKindMessage,
+		UserName:    "MrPoundsign",
+		DisplayName: "MrPoundsign",
+		Roles:       []string{"subscriber"},
+		Text:        "I am typing in chat myself!",
+	}, "I am typing in chat myself!", slot, cfg, now)
+	if resOwn.Allow || resOwn.Reason != "own_message" {
+		t.Fatalf("expected own_message rejection for MrPoundsign, got %+v", resOwn)
+	}
+
+	// Platform-scoped username (youtube:@MyYTHandle) should NOT trigger @mention on Twitch
+	resOtherPlatMention := cc.Evaluate(chat.Event{
+		Platform: "twitch",
+		Kind:     chat.EventKindMessage,
+		UserName: "RandomViewer",
+		Text:     "Hey @MyYTHandle are you here?",
+	}, "Hey @MyYTHandle are you here?", slot, cfg, now)
+	if resOtherPlatMention.IsMention || resOtherPlatMention.Allow {
+		t.Fatalf("expected youtube-scoped @MyYTHandle mention to be ignored on twitch, got %+v", resOtherPlatMention)
+	}
 
 	// 1. Muted chatter is dropped
 	res := cc.Evaluate(chat.Event{

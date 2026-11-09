@@ -180,7 +180,7 @@ func (mw *MainWindow) showSettingsDialog() {
 		if installed {
 			status = "Installed"
 		}
-		return fmt.Sprintf("%s [%s] — %s", spec.Name, status, spec.Summary)
+		return fmt.Sprintf("%s [%s]", spec.Name, status)
 	}
 
 	for _, spec := range tts.AllModelFamilies {
@@ -188,11 +188,15 @@ func (mw *MainWindow) showSettingsDialog() {
 		chk := widget.NewCheck(formatPackLabel(famSpec), nil)
 		chk.SetChecked(enabledSet[famSpec.ID])
 		modelChecks[famSpec.ID] = chk
-		modelRows.Add(chk)
+
+		summaryLbl := widget.NewLabelWithStyle("      "+famSpec.Summary, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+		summaryLbl.Wrapping = fyne.TextWrapWord
+
+		modelRows.Add(container.NewVBox(chk, summaryLbl))
 	}
 
 	packStatusLbl := widget.NewLabel("Shared Models Dir: " + modelDir)
-	packStatusLbl.Truncation = fyne.TextTruncateEllipsis
+	packStatusLbl.Wrapping = fyne.TextWrapBreak
 	packProgress := widget.NewProgressBar()
 	packProgress.Hide()
 
@@ -411,6 +415,15 @@ func (mw *MainWindow) showSettingsDialog() {
 	chatterScroll := container.NewVScroll(chatterListBox)
 	chatterScroll.SetMinSize(fyne.NewSize(200, 110))
 
+	myUsersDesc := widget.NewLabel("My Username(s) — your own chat messages are muted, and @mentions to you play a spatial chime and bypass Crowd Control. Tip: use optional platform:username (e.g. twitch:mrpoundsign, youtube:@MrPoundSign) if your handle differs by platform:")
+	myUsersDesc.Wrapping = fyne.TextWrapWord
+
+	priorityDesc := widget.NewLabel("Priority VIPs / Friends (always spoken, bypasses Crowd Control):")
+	priorityDesc.Wrapping = fyne.TextWrapWord
+
+	ignoredDesc := widget.NewLabel("Muted Chatters (never spoken):")
+	ignoredDesc.Wrapping = fyne.TextWrapWord
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Voices & Voice Packs", container.NewVScroll(container.NewVBox(
 			widget.NewLabelWithStyle("Neural TTS Voice Model Packs (Shared with TownCrier):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -447,15 +460,15 @@ func (mw *MainWindow) showSettingsDialog() {
 				widget.NewLabel("Min Global Pacing Gap (ms, 0=off):"), pacingEntry,
 			),
 		))),
-		container.NewTabItem("Identity & Friends", container.NewVBox(
-			widget.NewLabel("My Username(s) (@mentions play a spatial chime and bypass Crowd Control):"),
+		container.NewTabItem("Identity & Friends", container.NewVScroll(container.NewVBox(
+			myUsersDesc,
 			myUsernamesEntry,
-			widget.NewLabel("Priority VIPs / Friends (always spoken):"),
+			priorityDesc,
 			priorityEntry,
-			widget.NewLabel("Muted Chatters (never spoken):"),
+			ignoredDesc,
 			ignoredEntry,
-		)),
-		container.NewTabItem("Translation & Hotkeys", container.NewVBox(
+		))),
+		container.NewTabItem("Translation & Hotkeys", container.NewVScroll(container.NewVBox(
 			transEnabledCk,
 			widget.NewLabel("Target Language (ISO-639-1):"),
 			targetLangEntry,
@@ -467,7 +480,7 @@ func (mw *MainWindow) showSettingsDialog() {
 				widget.NewLabel("Replay Last:"), hkReplayEntry,
 				widget.NewLabel("Panic Mute:"), hkPanicEntry,
 			),
-		)),
+		))),
 	)
 
 	d := dialog.NewCustomConfirm("Hearsay Settings & Voices", "Save Changes", "Cancel", tabs, func(save bool) {

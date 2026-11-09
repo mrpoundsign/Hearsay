@@ -99,12 +99,16 @@ func TestMainWindowQuickTuneMiniPlayerAndTheme(t *testing.T) {
 		t.Fatalf("expected IsMiniMode() == false after second toggle")
 	}
 
-	// Verify HearsayTheme font scaling & high contrast
+	// Verify HearsayTheme font scaling, UI scaling & high contrast
 	th := NewHearsayTheme(1.5, true)
 	baseSize := NewHearsayTheme(1.0, false).Size(theme.SizeNameText)
 	scaledSize := th.Size(theme.SizeNameText)
 	if scaledSize <= baseSize {
 		t.Fatalf("expected scaled font size (%v) > base size (%v)", scaledSize, baseSize)
+	}
+	mw.uiScaleSel.SetSelected("125%")
+	if got := sess.ConfigSnapshot().Accessibility.UIScale; got != "1.25" {
+		t.Fatalf("expected UIScale=1.25 after selecting 125%%, got %q", got)
 	}
 }
 

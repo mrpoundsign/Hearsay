@@ -11,7 +11,7 @@ Built on the [`TownCrier/pkg`](https://github.com/mrpoundsign/TownCrier) neural 
 - **100% Zero-Login & Read-Only**: Paste any stream URL (`twitch.tv/...`, `youtube.com/watch?v=...`, `kick.com/...`, `tiktok.com/@...`) or `platform:channel` handle and tune in immediately—no OAuth or accounts required.
 - **Multi-Stream Audio Mixer & Spatial Stereo Panning**: Listen to multiple streams simultaneously (even multiple channels on the same platform) with independent volume gain and **Left / Center / Right constant-power stereo panning** (`-1.0` to `+1.0`).
 - **Deterministic Multi-Voice Chatter Hashing**: Every chatter automatically receives a consistent neural voice (`FNV-1a` hash across the active voice pool) so back-and-forth conversations sound like distinct people.
-- **Smart Channel-Switch Announcements**: Announces the channel name (`"PirateSoftware: ..."`) only when the active speaker switches from one watched stream to another.
+- **Smart Channel-Switch Announcements**: Announces the channel name (`"MoCoMade: ..."`) only when the active speaker switches from one watched stream to another.
 - **Crowd Control for High-Velocity Chats**:
   - Role/Badge filtering (`All Chatters`, `Subs + VIPs + Mods`, or `Mods + Streamer + @Mentions`).
   - Per-chatter cooldown timer & global pacing gap.

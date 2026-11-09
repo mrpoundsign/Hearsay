@@ -261,7 +261,7 @@ build_mac() {
 }
 
 package_mac() {
-    if [ ! -f "$BIN_DIR/hearsay" ]; then
+    if [ ! -f "$BIN_DIR/hearsay-core" ]; then
         build_mac
     fi
 
@@ -273,20 +273,73 @@ package_mac() {
     fi
 
     local tar_file="$DIST_DIR/Hearsay-v${VERSION}-darwin-${pkg_arch}.tar.gz"
-    echo "==> Packaging macOS (${pkg_arch}) distribution into $tar_file..."
+    echo "==> Packaging macOS (${pkg_arch}) Hearsay.app bundle into $tar_file..."
     rm -f "$tar_file"
 
     local staging="$BUILD_DIR/package_staging_mac"
+    local app_dir="$staging/Hearsay.app"
+    local contents_dir="$app_dir/Contents"
+    local macos_dir="$contents_dir/MacOS"
+    local res_dir="$contents_dir/Resources"
+
     rm -rf "$staging"
-    mkdir -p "$staging"
-    cp "$BIN_DIR/hearsay" "$staging/"
-    chmod +x "$staging/hearsay"
+    mkdir -p "$macos_dir" "$res_dir"
+
+    cp -f "$BIN_DIR/hearsay-core" "$macos_dir/Hearsay"
+    chmod +x "$macos_dir/Hearsay"
+    cp -f "$BIN_DIR/libonnxruntime.dylib" "$macos_dir/"
+    cp -f "$BIN_DIR/libsherpa-onnx-c-api.dylib" "$macos_dir/"
+    cp -f "$BIN_DIR/libsherpa-onnx-cxx-api.dylib" "$macos_dir/"
+
+    if [ -f "$ROOT_DIR/assets/icon.png" ]; then
+        python3 -c '
+import struct, sys
+png = open(sys.argv[1], "rb").read()
+chunk = b"ic08" + struct.pack(">I", len(png) + 8) + png
+icns = b"icns" + struct.pack(">I", len(chunk) + 8) + chunk
+open(sys.argv[2], "wb").write(icns)
+' "$ROOT_DIR/assets/icon.png" "$res_dir/icon.icns"
+    fi
+
+    cat > "$contents_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Hearsay</string>
+    <key>CFBundleIconFile</key>
+    <string>icon.icns</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.github.mrpoundsign.hearsay</string>
+    <key>CFBundleName</key>
+    <string>Hearsay</string>
+    <key>CFBundleDisplayName</key>
+    <string>Hearsay</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${VERSION}</string>
+    <key>CFBundleVersion</key>
+    <string>${VERSION}</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
+    if command -v codesign &>/dev/null; then
+        codesign --force --deep --sign - "$app_dir" 2>/dev/null || true
+    fi
+
     [ -f "$ROOT_DIR/THIRDPARTY_NOTICES.md" ] && cp "$ROOT_DIR/THIRDPARTY_NOTICES.md" "$staging/"
     [ -f "$ROOT_DIR/LICENSE" ] && cp "$ROOT_DIR/LICENSE" "$staging/"
     [ -f "$ROOT_DIR/FyneApp.toml" ] && cp "$ROOT_DIR/FyneApp.toml" "$staging/"
     (cd "$staging" && tar -czf "$tar_file" .)
     rm -rf "$staging"
-    echo "✓ Successfully packaged $tar_file"
+    echo "✓ Successfully packaged $tar_file (containing Hearsay.app)"
 }
 
 package_dist() {

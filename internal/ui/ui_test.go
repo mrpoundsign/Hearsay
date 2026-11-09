@@ -45,12 +45,12 @@ func TestMainWindowQuickTuneMiniPlayerAndTheme(t *testing.T) {
 	mw := NewMainWindow(a, sess, mockEnum)
 
 	// Verify Quick Tune adds a stream slot
-	mw.QuickTuneEntry.SetText("https://www.twitch.tv/piratesoftware")
+	mw.QuickTuneEntry.SetText("https://www.twitch.tv/mocomade")
 	fynetest.Tap(mw.TuneInBtn)
 
 	slots := sess.SlotsSnapshot()
-	if len(slots) != 1 || slots[0].Config.Channel != "piratesoftware" {
-		t.Fatalf("expected 1 tuned slot for piratesoftware, got %+v", slots)
+	if len(slots) != 1 || slots[0].Config.Channel != "mocomade" {
+		t.Fatalf("expected 1 tuned slot for mocomade, got %+v", slots)
 	}
 
 	// Verify 1-Click Mini Player toggle
@@ -127,6 +127,13 @@ func TestMainWindowConcurrentUpdatesAndSlotControls(t *testing.T) {
 	if len(sess.LogSnapshot()) != 10 {
 		t.Fatalf("expected 10 log entries, got %d", len(sess.LogSnapshot()))
 	}
+
+	// Verify TooltipButton hover and unhover behavior under uiMu
+	if mw.pauseBtn.Tooltip == "" || mw.panicBtn.Tooltip == "" {
+		t.Fatalf("expected tooltips on transport and header buttons")
+	}
+	mw.showTooltip(mw.pauseBtn, mw.pauseBtn.Tooltip)
+	mw.hideTooltip(mw.pauseBtn)
 }
 
 func TestParseHotkey(t *testing.T) {

@@ -40,7 +40,7 @@ func ParseTargetInput(raw string, fallbackPlatform string) (string, string, erro
 		return parseStreamURL(urlStr)
 	}
 
-	// Check for "platform:channel" shorthand (e.g. "twitch:piratesoftware", "yt:@PirateSoftware")
+	// Check for "platform:channel" shorthand (e.g. "twitch:mocomade", "yt:@MoCoMade")
 	if prefix, rest, ok := strings.Cut(input, ":"); ok {
 		plat := normalizePlatformAlias(prefix)
 		ch := strings.TrimSpace(rest)

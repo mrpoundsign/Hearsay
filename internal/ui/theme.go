@@ -8,7 +8,7 @@ import (
 )
 
 // AppVersion is injected at build time via -ldflags.
-var AppVersion = "v0.0.1"
+var AppVersion = "v0.0.2"
 
 var (
 	// Standard Hearsay Palette: Obsidian Slate + Chrome White + Emerald Mint

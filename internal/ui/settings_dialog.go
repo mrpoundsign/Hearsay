@@ -81,16 +81,16 @@ func (mw *MainWindow) showSettingsDialog() {
 	modelDir := tts.DefaultModelDir()
 	supertonicStatus := "Not Installed"
 	if tts.IsModelFamilyInstalled(modelDir, tts.ModelSupertonic, false) {
-		supertonicStatus = "✓ Installed (Shared with TownCrier)"
+		supertonicStatus = "Installed (Shared with TownCrier)"
 	}
 	kokoroStatus := "Not Installed"
 	if tts.IsKokoroInstalledForMode(modelDir, false) {
-		kokoroStatus = "✓ Installed (Shared with TownCrier)"
+		kokoroStatus = "Installed (Shared with TownCrier)"
 	}
-	modelStatusLbl := widget.NewLabel(fmt.Sprintf("Shared Models Dir: %s\n• Supertonic: %s\n• Kokoro-82M: %s", modelDir, supertonicStatus, kokoroStatus))
+	modelStatusLbl := widget.NewLabel(fmt.Sprintf("Shared Models Dir: %s\n- Supertonic: %s\n- Kokoro-82M: %s", modelDir, supertonicStatus, kokoroStatus))
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem("🔔 My Identity & Friends", container.NewVBox(
+		container.NewTabItem("My Identity & Friends", container.NewVBox(
 			widget.NewLabel("My Username(s) (@mentions play a spatial chime and bypass Crowd Control):"),
 			myUsernamesEntry,
 			widget.NewLabel("Priority Friends (always spoken):"),
@@ -98,7 +98,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			widget.NewLabel("Muted Chatters (never spoken):"),
 			ignoredEntry,
 		)),
-		container.NewTabItem("🛡 Crowd Control", container.NewVBox(
+		container.NewTabItem("Crowd Control", container.NewVBox(
 			skipSpamCk,
 			speakNoTextCk,
 			widget.NewLabel("Per-Chatter Cooldown (seconds, 0 = off):"),
@@ -106,7 +106,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			widget.NewLabel("Minimum Global Pacing Gap (milliseconds, 0 = off):"),
 			pacingEntry,
 		)),
-		container.NewTabItem("🗣 Voices & Audio", container.NewVBox(
+		container.NewTabItem("Voices & Audio", container.NewVBox(
 			hashVoicesCk,
 			speakSwitchCk,
 			speakNamesCk,
@@ -115,7 +115,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			widget.NewSeparator(),
 			modelStatusLbl,
 		)),
-		container.NewTabItem("🌐 Translation & Hotkeys", container.NewVBox(
+		container.NewTabItem("Translation & Hotkeys", container.NewVBox(
 			transEnabledCk,
 			widget.NewLabel("Target Language (ISO-639-1):"),
 			targetLangEntry,

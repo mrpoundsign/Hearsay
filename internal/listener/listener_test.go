@@ -18,11 +18,11 @@ func TestParseTargetInput(t *testing.T) {
 		wantPlat string
 		wantChan string
 	}{
-		{"https://www.twitch.tv/piratesoftware", "twitch", "twitch", "piratesoftware"},
+		{"https://www.twitch.tv/mocomade", "twitch", "twitch", "mocomade"},
 		{"twitch.tv/cohhcarnage/chat", "youtube", "twitch", "cohhcarnage"},
 		{"https://www.youtube.com/watch?v=dQw4w9WgXcQ", "twitch", "youtube", "dQw4w9WgXcQ"},
 		{"https://youtu.be/abc123XYZ", "twitch", "youtube", "abc123XYZ"},
-		{"https://www.youtube.com/@PirateSoftware/live", "twitch", "youtube", "@PirateSoftware"},
+		{"https://www.youtube.com/@MoCoMade/live", "twitch", "youtube", "@MoCoMade"},
 		{"https://kick.com/xqc", "twitch", "kick", "xqc"},
 		{"https://www.tiktok.com/@creator_handle/live", "twitch", "tiktok", "creator_handle"},
 		{"yt:@SomeCreator", "twitch", "youtube", "@SomeCreator"},

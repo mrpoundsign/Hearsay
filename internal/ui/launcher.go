@@ -38,7 +38,7 @@ func NewLaunchWindow(a fyne.App) (*LaunchStateTracker, fyne.Window) {
 	w.SetFixedSize(true)
 	w.CenterOnScreen()
 
-	title := widget.NewLabelWithStyle("🎧 Hearsay "+AppVersion, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle("Hearsay "+AppVersion, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	sub := widget.NewLabelWithStyle("Multi-Stream Accessibility Chat Reader", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
 	dlProg := widget.NewProgressBar()
@@ -47,9 +47,9 @@ func NewLaunchWindow(a fyne.App) (*LaunchStateTracker, fyne.Window) {
 	tracker := &LaunchStateTracker{
 		window:       w,
 		statusLabel:  widget.NewLabelWithStyle("Starting up subsystems...", fyne.TextAlignCenter, fyne.TextStyle{}),
-		stepConfig:   widget.NewLabel("⏳ Reading configuration & saved library..."),
-		stepAudio:    widget.NewLabel("⏳ Enumerating WASAPI stereo playback devices..."),
-		stepTTS:      widget.NewLabel("⏳ Loading shared neural TTS engine..."),
+		stepConfig:   widget.NewLabel("[...] Reading configuration & saved library..."),
+		stepAudio:    widget.NewLabel("[...] Enumerating stereo playback devices..."),
+		stepTTS:      widget.NewLabel("[...] Loading shared neural TTS engine..."),
 		progress:     widget.NewProgressBarInfinite(),
 		downloadProg: dlProg,
 	}
@@ -64,7 +64,7 @@ func NewLaunchWindow(a fyne.App) (*LaunchStateTracker, fyne.Window) {
 				tracker.downloadProg.Hide()
 				tracker.progress.Show()
 				tracker.progress.Start()
-				tracker.stepTTS.SetText("⏳ Loading shared neural TTS engine...")
+				tracker.stepTTS.SetText("[...] Loading shared neural TTS engine...")
 			})
 			go retry()
 		}
@@ -103,9 +103,9 @@ func NewLaunchWindow(a fyne.App) (*LaunchStateTracker, fyne.Window) {
 func (t *LaunchStateTracker) SetConfigStatus(done bool, detail string) {
 	fyne.Do(func() {
 		if done {
-			t.stepConfig.SetText("✓ Configuration: " + detail)
+			t.stepConfig.SetText("[OK] Configuration: " + detail)
 		} else {
-			t.stepConfig.SetText("⚠️ Configuration: " + detail)
+			t.stepConfig.SetText("[WARN] Configuration: " + detail)
 		}
 	})
 }
@@ -113,9 +113,9 @@ func (t *LaunchStateTracker) SetConfigStatus(done bool, detail string) {
 func (t *LaunchStateTracker) SetAudioStatus(done bool, detail string) {
 	fyne.Do(func() {
 		if done {
-			t.stepAudio.SetText("✓ Audio Playback: " + detail)
+			t.stepAudio.SetText("[OK] Audio Playback: " + detail)
 		} else {
-			t.stepAudio.SetText("⚠️ Audio Playback: " + detail)
+			t.stepAudio.SetText("[WARN] Audio Playback: " + detail)
 		}
 	})
 }
@@ -133,9 +133,9 @@ func (t *LaunchStateTracker) SetTTSStatus(done bool, detail string) {
 			t.progress.Show()
 		}
 		if done {
-			t.stepTTS.SetText("✓ Neural TTS: " + detail)
+			t.stepTTS.SetText("[OK] Neural TTS: " + detail)
 		} else {
-			t.stepTTS.SetText("❌ Neural TTS: " + detail)
+			t.stepTTS.SetText("[ERR] Neural TTS: " + detail)
 		}
 	})
 }
@@ -172,7 +172,7 @@ func (t *LaunchStateTracker) SetDownloadProgress(current, total int64) {
 		t.downloadProg.SetValue(ratio)
 		msg := fmt.Sprintf("Downloading & extracting %s models... %.1f / %.1f MB", modelName, curMB, totMB)
 		t.statusLabel.SetText(msg)
-		t.stepTTS.SetText(fmt.Sprintf("⏳ TTS (%s): Downloading (%.0f%%)...", modelName, ratio*100))
+		t.stepTTS.SetText(fmt.Sprintf("[...] TTS (%s): Downloading (%.0f%%)...", modelName, ratio*100))
 	})
 }
 
@@ -187,7 +187,7 @@ func (t *LaunchStateTracker) ShowFatalError(statusMsg string, ttsDetail string, 
 		t.progress.Hide()
 		t.downloadProg.Hide()
 		t.statusLabel.SetText(statusMsg)
-		t.stepTTS.SetText("❌ Neural TTS: " + ttsDetail)
+		t.stepTTS.SetText("[ERR] Neural TTS: " + ttsDetail)
 		t.actionBox.Show()
 	})
 }

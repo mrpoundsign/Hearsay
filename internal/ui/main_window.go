@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -33,19 +33,22 @@ type MainWindow struct {
 	uiMu           sync.Mutex
 	isMiniMode     bool
 	suppressEvents bool
+	lastStatusText string
+	activeTipPopup *widget.PopUp
+	activeTipBtn   *TooltipButton
 
 	// Header & status widgets
 	activeBadgeLbl *widget.Label
 	nowSpeakingLbl *widget.Label
 	fontScaleSel   *widget.Select
 	highContrastCk *widget.Check
-	miniToggleBtn  *widget.Button
-	panicBtn       *widget.Button
+	miniToggleBtn  *TooltipButton
+	panicBtn       *TooltipButton
 
 	// Quick-Tune widgets
 	PlatformSelect *widget.Select
 	QuickTuneEntry *widget.Entry
-	TuneInBtn      *widget.Button
+	TuneInBtn      *TooltipButton
 	tuneErrorLbl   *widget.Label
 
 	// Active Mixer & Saved Library containers
@@ -60,10 +63,10 @@ type MainWindow struct {
 	masterVolLbl *widget.Label
 	speedSld     *widget.Slider
 	speedLbl     *widget.Label
-	pauseBtn     *widget.Button
-	skipBtn      *widget.Button
-	replayBtn    *widget.Button
-	clearQBtn    *widget.Button
+	pauseBtn     *TooltipButton
+	skipBtn      *TooltipButton
+	replayBtn    *TooltipButton
+	clearQBtn    *TooltipButton
 	logEntries   []listener.LogEntry
 	logList      *widget.List
 
@@ -97,6 +100,7 @@ func NewMainWindow(a fyne.App, session *listener.Session, enumFn ...DeviceEnumer
 		Session:          session,
 		deviceEnumerator: devEnum,
 		deviceMap:        make(map[string]string),
+		lastStatusText:   "Idle — Ready to tune in",
 	}
 
 	mw.buildWidgets(cfg)
@@ -130,10 +134,80 @@ func NewMainWindow(a fyne.App, session *listener.Session, enumFn ...DeviceEnumer
 	return mw
 }
 
+func (mw *MainWindow) newTipBtn(label string, icon fyne.Resource, tooltip string, tapped func()) *TooltipButton {
+	return NewTooltipButton(label, icon, tooltip, mw.showTooltip, mw.hideTooltip, func() {
+		mw.hideTooltip(nil)
+		if tapped != nil {
+			tapped()
+		}
+	})
+}
+
+func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
+	mw.uiMu.Lock()
+	defer mw.uiMu.Unlock()
+
+	if mw.Window == nil || text == "" {
+		return
+	}
+	mw.hideTooltipLocked(nil)
+	mw.activeTipBtn = btn
+	if mw.nowSpeakingLbl != nil {
+		mw.nowSpeakingLbl.SetText("Tip: " + text)
+	}
+
+	c := mw.Window.Canvas()
+	if c == nil {
+		return
+	}
+	tipLbl := widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	bg := canvas.NewRectangle(colorSlateSurface)
+	bg.StrokeColor = colorEmeraldMint
+	bg.StrokeWidth = 1
+	bg.CornerRadius = 4
+	box := container.NewStack(bg, container.NewPadded(tipLbl))
+
+	pop := widget.NewPopUp(box, c)
+	btnPos := fyne.CurrentApp().Driver().AbsolutePositionForObject(btn)
+	popSize := pop.MinSize()
+	canvasSize := c.Size()
+
+	x := btnPos.X
+	if x+popSize.Width > canvasSize.Width-8 {
+		x = max(8, canvasSize.Width-popSize.Width-8)
+	}
+	y := btnPos.Y - popSize.Height - 4
+	if y < 4 {
+		y = btnPos.Y + btn.Size().Height + 4
+	}
+	pop.ShowAtPosition(fyne.NewPos(x, y))
+	mw.activeTipPopup = pop
+}
+
+func (mw *MainWindow) hideTooltip(btn *TooltipButton) {
+	mw.uiMu.Lock()
+	defer mw.uiMu.Unlock()
+	mw.hideTooltipLocked(btn)
+}
+
+func (mw *MainWindow) hideTooltipLocked(btn *TooltipButton) {
+	if btn != nil && mw.activeTipBtn != nil && mw.activeTipBtn != btn {
+		return
+	}
+	if mw.activeTipPopup != nil {
+		mw.activeTipPopup.Hide()
+		mw.activeTipPopup = nil
+	}
+	mw.activeTipBtn = nil
+	if mw.nowSpeakingLbl != nil {
+		mw.nowSpeakingLbl.SetText(mw.lastStatusText)
+	}
+}
+
 func (mw *MainWindow) buildWidgets(cfg *config.Config) {
 	// 1. Header Bar
-	mw.activeBadgeLbl = widget.NewLabelWithStyle("🎧 Hearsay — 0 Active Streams", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	mw.nowSpeakingLbl = widget.NewLabelWithStyle("🔇 Idle — Ready to tune in", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+	mw.activeBadgeLbl = widget.NewLabelWithStyle("Hearsay — 0 Active Streams", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	mw.nowSpeakingLbl = widget.NewLabelWithStyle(mw.lastStatusText, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
 	mw.nowSpeakingLbl.Truncation = fyne.TextTruncateEllipsis
 
 	scaleOptions := []string{"100%", "125%", "150%", "175%", "200%"}
@@ -166,18 +240,33 @@ func (mw *MainWindow) buildWidgets(cfg *config.Config) {
 	mw.highContrastCk.SetChecked(cfg.Accessibility.HighContrast)
 	mw.suppressEvents = false
 
-	mw.miniToggleBtn = widget.NewButton("🗗 Mini Player", func() {
-		mw.ToggleMiniMode()
-	})
+	mw.miniToggleBtn = mw.newTipBtn(
+		"Mini Player",
+		theme.ViewRestoreIcon(),
+		"Collapse into compact Always-on-Top Mini Player overlay",
+		func() {
+			mw.ToggleMiniMode()
+		},
+	)
 
-	settingsBtn := widget.NewButtonWithIcon("Settings & Voices", theme.SettingsIcon(), func() {
-		mw.showSettingsDialog()
-	})
+	settingsBtn := mw.newTipBtn(
+		"Settings & Voices",
+		theme.SettingsIcon(),
+		"Configure My Username(s), Crowd Control, Voices, Translation & Hotkeys",
+		func() {
+			mw.showSettingsDialog()
+		},
+	)
 
-	mw.panicBtn = widget.NewButton("🛑 PANIC MUTE", func() {
-		mw.Session.PanicMute()
-		mw.updateNowSpeaking(nil)
-	})
+	mw.panicBtn = mw.newTipBtn(
+		"PANIC MUTE",
+		theme.VolumeMuteIcon(),
+		"Emergency Mute: Immediately stop audio and flush speech queue (Ctrl+Shift+M)",
+		func() {
+			mw.Session.PanicMute()
+			mw.updateNowSpeaking(nil)
+		},
+	)
 	mw.panicBtn.Importance = widget.DangerImportance
 
 	headerTop := container.NewBorder(
@@ -199,38 +288,56 @@ func (mw *MainWindow) buildWidgets(cfg *config.Config) {
 	mw.PlatformSelect.SetSelected("Auto / URL")
 
 	mw.QuickTuneEntry = widget.NewEntry()
-	mw.QuickTuneEntry.SetPlaceHolder("Paste stream URL or type channel (e.g. twitch:piratesoftware, @handle)...")
+	mw.QuickTuneEntry.SetPlaceHolder("Paste stream URL or type channel (e.g. twitch:mocomade, @handle)...")
 	mw.QuickTuneEntry.OnSubmitted = func(_ string) {
 		mw.handleTuneIn()
 	}
 
-	mw.TuneInBtn = widget.NewButtonWithIcon("Tune In", theme.MediaPlayIcon(), func() {
-		mw.handleTuneIn()
-	})
+	mw.TuneInBtn = mw.newTipBtn(
+		"Tune In",
+		theme.MediaPlayIcon(),
+		"Connect to the entered stream URL or channel handle",
+		func() {
+			mw.handleTuneIn()
+		},
+	)
 	mw.TuneInBtn.Importance = widget.HighImportance
 
 	mw.tuneErrorLbl = widget.NewLabel("")
 	mw.tuneErrorLbl.Hide()
 
+	quickTuneHeader := widget.NewLabelWithStyle("Quick Tune — Add Live Stream", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	quickTuneHeader.Truncation = fyne.TextTruncateEllipsis
+
 	quickTuneBox := container.NewVBox(
-		widget.NewLabelWithStyle("📻 Quick Tune — Add Live Stream", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		quickTuneHeader,
 		container.NewBorder(nil, nil, mw.PlatformSelect, mw.TuneInBtn, mw.QuickTuneEntry),
 		mw.tuneErrorLbl,
 	)
 
 	mw.mixerCardsBox = container.NewVBox()
 	mixerScroll := container.NewVScroll(mw.mixerCardsBox)
-	mixerScroll.SetMinSize(fyne.NewSize(420, 260))
+	mixerScroll.SetMinSize(fyne.NewSize(260, 200))
 
 	mw.savedStreamersBox = container.NewVBox()
 	mw.lineupsBox = container.NewVBox()
 
-	addSavedStreamerBtn := widget.NewButtonWithIcon("Add Saved Streamer", theme.ContentAddIcon(), func() {
-		mw.showAddSavedStreamerDialog()
-	})
-	saveLineupBtn := widget.NewButtonWithIcon("Save Active Streams as Lineup", theme.DocumentSaveIcon(), func() {
-		mw.showSaveLineupDialog()
-	})
+	addSavedStreamerBtn := mw.newTipBtn(
+		"Add Saved Streamer",
+		theme.ContentAddIcon(),
+		"Bookmark a creator with one or more platform channels",
+		func() {
+			mw.showAddSavedStreamerDialog()
+		},
+	)
+	saveLineupBtn := mw.newTipBtn(
+		"Save Active Streams as Lineup",
+		theme.DocumentSaveIcon(),
+		"Save all currently active streams and their Left/Right stereo panning as a 1-click preset",
+		func() {
+			mw.showSaveLineupDialog()
+		},
+	)
 
 	savedStreamersTab := container.NewBorder(
 		container.NewPadded(addSavedStreamerBtn),
@@ -244,13 +351,16 @@ func (mw *MainWindow) buildWidgets(cfg *config.Config) {
 	)
 
 	libraryTabs := container.NewAppTabs(
-		container.NewTabItem("⭐ Saved Streamers", savedStreamersTab),
-		container.NewTabItem("🎛 Lineups / Co-Streams", lineupsTab),
+		container.NewTabItemWithIcon("Saved Streamers", theme.AccountIcon(), savedStreamersTab),
+		container.NewTabItemWithIcon("Lineups / Co-Streams", theme.ListIcon(), lineupsTab),
 	)
+
+	mixerHeader := widget.NewLabelWithStyle("Active Streams Mixer (Volume, Stereo Pan & Crowd Filter)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	mixerHeader.Truncation = fyne.TextTruncateEllipsis
 
 	leftSplit := container.NewVSplit(
 		container.NewBorder(
-			container.NewVBox(quickTuneBox, widget.NewSeparator(), widget.NewLabelWithStyle("🎚 Active Streams Mixer (Volume, Stereo Pan & Crowd Filter)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})),
+			container.NewVBox(quickTuneBox, widget.NewSeparator(), mixerHeader),
 			nil, nil, nil,
 			mixerScroll,
 		),
@@ -258,22 +368,25 @@ func (mw *MainWindow) buildWidgets(cfg *config.Config) {
 	)
 	leftSplit.Offset = 0.58
 
-	// 3. Right Pane — Transport & Unified Live Log
+	// 3. Right Pane — Transport & Unified Live Log (compact min-width so HSplit is freely resizable)
 	mw.buildTransportWidgets(cfg)
 	mw.buildLiveLogWidget()
+
+	logHeader := widget.NewLabelWithStyle("Unified Live Log (Hover any action button for tooltip)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	logHeader.Truncation = fyne.TextTruncateEllipsis
 
 	rightPane := container.NewBorder(
 		container.NewVBox(
 			mw.buildTransportBar(),
 			widget.NewSeparator(),
-			widget.NewLabelWithStyle("📜 Unified Live Log (Click Replay, Friend, Voice, or Mute on any message)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			logHeader,
 		),
 		nil, nil, nil,
 		mw.logList,
 	)
 
 	mainSplit := container.NewHSplit(leftSplit, rightPane)
-	mainSplit.Offset = 0.42
+	mainSplit.Offset = 0.52
 
 	mw.fullRoot = container.NewBorder(
 		container.NewVBox(headerTop, widget.NewSeparator()),
@@ -344,43 +457,62 @@ func (mw *MainWindow) buildTransportWidgets(cfg *config.Config) {
 		})
 	}
 
-	mw.pauseBtn = widget.NewButton("⏸ Pause", func() {
-		paused := mw.Session.TogglePause()
-		if paused {
-			mw.pauseBtn.SetText("▶ Resume")
-		} else {
-			mw.pauseBtn.SetText("⏸ Pause")
-		}
-	})
+	mw.pauseBtn = mw.newTipBtn(
+		"Pause",
+		theme.MediaPauseIcon(),
+		"Pause or resume TTS speech queue (Ctrl+Shift+P)",
+		func() {
+			paused := mw.Session.TogglePause()
+			if paused {
+				mw.pauseBtn.SetText("Resume")
+				mw.pauseBtn.SetIcon(theme.MediaPlayIcon())
+			} else {
+				mw.pauseBtn.SetText("Pause")
+				mw.pauseBtn.SetIcon(theme.MediaPauseIcon())
+			}
+		},
+	)
 
-	mw.skipBtn = widget.NewButton("⏭ Skip", func() {
-		mw.Session.SkipCurrent()
-	})
+	mw.skipBtn = mw.newTipBtn(
+		"Skip",
+		theme.MediaSkipNextIcon(),
+		"Skip the currently speaking message (Ctrl+Shift+S)",
+		func() {
+			mw.Session.SkipCurrent()
+		},
+	)
 
-	mw.replayBtn = widget.NewButton("🔁 Replay Last", func() {
-		mw.Session.ReplayLast()
-	})
+	mw.replayBtn = mw.newTipBtn(
+		"Replay Last",
+		theme.MediaReplayIcon(),
+		"Replay the last spoken message aloud (Ctrl+Shift+R)",
+		func() {
+			mw.Session.ReplayLast()
+		},
+	)
 
-	mw.clearQBtn = widget.NewButton("🧹 Clear Queue", func() {
-		mw.Session.ClearQueue()
-	})
+	mw.clearQBtn = mw.newTipBtn(
+		"Clear Queue",
+		theme.DeleteIcon(),
+		"Clear all pending messages waiting in the speech queue",
+		func() {
+			mw.Session.ClearQueue()
+		},
+	)
 }
 
 func (mw *MainWindow) buildTransportBar() fyne.CanvasObject {
+	outputRow := container.NewBorder(nil, nil, widget.NewLabel("Output:"), nil, mw.deviceSelect)
 	volBox := container.NewBorder(nil, nil, mw.masterVolLbl, nil, mw.masterVolSld)
 	speedBox := container.NewBorder(nil, nil, mw.speedLbl, nil, mw.speedSld)
-	slidersRow := container.NewGridWithColumns(3,
-		container.NewBorder(nil, nil, widget.NewLabel("Output:"), nil, mw.deviceSelect),
-		volBox,
-		speedBox,
-	)
+	slidersRow := container.NewGridWithColumns(2, volBox, speedBox)
 	buttonsRow := container.NewHBox(
 		mw.pauseBtn,
 		mw.skipBtn,
 		mw.replayBtn,
 		mw.clearQBtn,
 	)
-	return container.NewVBox(slidersRow, buttonsRow)
+	return container.NewVBox(outputRow, slidersRow, buttonsRow)
 }
 
 func (mw *MainWindow) buildLiveLogWidget() {
@@ -393,16 +525,15 @@ func (mw *MainWindow) buildLiveLogWidget() {
 		func() fyne.CanvasObject {
 			msgLbl := widget.NewLabel("Message template")
 			msgLbl.Truncation = fyne.TextTruncateEllipsis
-			replayBtn := widget.NewButton("🔁", nil)
-			friendBtn := widget.NewButton("⭐", nil)
-			voiceBtn := widget.NewButton("🎭", nil)
-			muteBtn := widget.NewButton("🔇", nil)
+			replayBtn := mw.newTipBtn("", theme.MediaReplayIcon(), "Replay this message aloud", nil)
+			friendBtn := mw.newTipBtn("VIP", nil, "Toggle Priority Friend (always spoken, bypasses Crowd Control)", nil)
+			voiceBtn := mw.newTipBtn("Voice", nil, "Assign a specific neural voice to this chatter", nil)
+			muteBtn := mw.newTipBtn("", theme.VolumeMuteIcon(), "Mute / ignore all future messages from this chatter", nil)
 			actions := container.NewHBox(replayBtn, friendBtn, voiceBtn, muteBtn)
 			return container.NewBorder(nil, nil, nil, actions, msgLbl)
 		},
 		func(id widget.ListItemID, item fyne.CanvasObject) {
 			mw.mu.Lock()
-			// Display newest messages at the top (index 0 = newest)
 			idx := len(mw.logEntries) - 1 - id
 			if idx < 0 || idx >= len(mw.logEntries) {
 				mw.mu.Unlock()
@@ -415,10 +546,10 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			msgLbl := border.Objects[0].(*widget.Label)
 			actions := border.Objects[1].(*fyne.Container)
 
-			replayBtn := actions.Objects[0].(*widget.Button)
-			friendBtn := actions.Objects[1].(*widget.Button)
-			voiceBtn := actions.Objects[2].(*widget.Button)
-			muteBtn := actions.Objects[3].(*widget.Button)
+			replayBtn := actions.Objects[0].(*TooltipButton)
+			friendBtn := actions.Objects[1].(*TooltipButton)
+			voiceBtn := actions.Objects[2].(*TooltipButton)
+			muteBtn := actions.Objects[3].(*TooltipButton)
 
 			badge := formatLogBadge(entry)
 			panTag := formatPanBadge(entry.Pan)
@@ -426,17 +557,25 @@ func (mw *MainWindow) buildLiveLogWidget() {
 
 			entryID := entry.ID
 			chatter := entry.UserName
+			replayBtn.SetTooltip(fmt.Sprintf("Replay message from %s aloud", chatter))
 			replayBtn.OnTapped = func() {
+				mw.hideTooltip(nil)
 				mw.Session.ReplayEntry(entryID)
 			}
+			friendBtn.SetTooltip(fmt.Sprintf("Toggle %s as Priority VIP/Friend (bypasses Crowd Control)", chatter))
 			friendBtn.OnTapped = func() {
+				mw.hideTooltip(nil)
 				mw.Session.TogglePriorityFriend(chatter)
 				mw.refreshLog()
 			}
+			voiceBtn.SetTooltip("Assign a custom neural TTS voice to " + chatter)
 			voiceBtn.OnTapped = func() {
+				mw.hideTooltip(nil)
 				mw.showAssignVoiceDialog(chatter)
 			}
+			muteBtn.SetTooltip("Mute / ignore " + chatter)
 			muteBtn.OnTapped = func() {
+				mw.hideTooltip(nil)
 				mw.Session.MuteChatter(chatter)
 			}
 		},
@@ -444,31 +583,33 @@ func (mw *MainWindow) buildLiveLogWidget() {
 }
 
 func (mw *MainWindow) buildMiniPlayerRoot() fyne.CanvasObject {
-	expandBtn := widget.NewButton("🗖 Full Deck", func() {
+	expandBtn := mw.newTipBtn("Full Deck", theme.ViewFullScreenIcon(), "Expand back to Full Radio Deck view", func() {
 		mw.ToggleMiniMode()
 	})
-	miniPauseBtn := widget.NewButton("⏸/▶", func() {
+	miniPauseBtn := mw.newTipBtn("", theme.MediaPauseIcon(), "Pause or resume TTS speech queue", func() {
 		paused := mw.Session.TogglePause()
 		if paused {
-			mw.pauseBtn.SetText("▶ Resume")
+			mw.pauseBtn.SetText("Resume")
+			mw.pauseBtn.SetIcon(theme.MediaPlayIcon())
 		} else {
-			mw.pauseBtn.SetText("⏸ Pause")
+			mw.pauseBtn.SetText("Pause")
+			mw.pauseBtn.SetIcon(theme.MediaPauseIcon())
 		}
 	})
-	miniSkipBtn := widget.NewButton("⏭ Skip", func() {
+	miniSkipBtn := mw.newTipBtn("", theme.MediaSkipNextIcon(), "Skip currently speaking message", func() {
 		mw.Session.SkipCurrent()
 	})
-	miniReplayBtn := widget.NewButton("🔁 Replay", func() {
+	miniReplayBtn := mw.newTipBtn("", theme.MediaReplayIcon(), "Replay last spoken message", func() {
 		mw.Session.ReplayLast()
 	})
-	miniPanicBtn := widget.NewButton("🛑 MUTE", func() {
+	miniPanicBtn := mw.newTipBtn("MUTE", theme.VolumeMuteIcon(), "Emergency Mute & clear speech queue", func() {
 		mw.Session.PanicMute()
 	})
 	miniPanicBtn.Importance = widget.DangerImportance
 
 	topBar := container.NewBorder(
 		nil, nil,
-		widget.NewLabelWithStyle("🎧 Hearsay Mini", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle("Hearsay Mini", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		container.NewHBox(miniPauseBtn, miniSkipBtn, miniReplayBtn, miniPanicBtn, expandBtn),
 		nil,
 	)
@@ -482,6 +623,9 @@ func (mw *MainWindow) buildMiniPlayerRoot() fyne.CanvasObject {
 
 // ToggleMiniMode switches the window between the Full Radio Deck and the compact Always-on-Top Mini Player.
 func (mw *MainWindow) ToggleMiniMode() {
+	mw.uiMu.Lock()
+	defer mw.uiMu.Unlock()
+
 	mw.mu.Lock()
 	mw.isMiniMode = !mw.isMiniMode
 	mini := mw.isMiniMode
@@ -524,7 +668,7 @@ func (mw *MainWindow) handleTuneIn() {
 
 	_, err := mw.Session.TuneIn(raw, fallback)
 	if err != nil {
-		mw.tuneErrorLbl.SetText("⚠️ " + err.Error())
+		mw.tuneErrorLbl.SetText("Error: " + err.Error())
 		mw.tuneErrorLbl.Show()
 		return
 	}
@@ -537,7 +681,7 @@ func (mw *MainWindow) refreshMixerAndLibrary() {
 	defer mw.uiMu.Unlock()
 
 	slots := mw.Session.SlotsSnapshot()
-	mw.activeBadgeLbl.SetText(fmt.Sprintf("🎧 Hearsay — %d Active Stream(s)", len(slots)))
+	mw.activeBadgeLbl.SetText(fmt.Sprintf("Hearsay — %d Active Stream(s)", len(slots)))
 
 	mw.mixerCardsBox.RemoveAll()
 	if len(slots) == 0 {
@@ -546,6 +690,7 @@ func (mw *MainWindow) refreshMixerAndLibrary() {
 			fyne.TextAlignCenter,
 			fyne.TextStyle{Italic: true},
 		)
+		emptyLbl.Wrapping = fyne.TextWrapWord
 		mw.mixerCardsBox.Add(container.NewPadded(emptyLbl))
 	} else {
 		for _, st := range slots {
@@ -557,7 +702,9 @@ func (mw *MainWindow) refreshMixerAndLibrary() {
 	cfg := mw.Session.ConfigSnapshot()
 	mw.savedStreamersBox.RemoveAll()
 	if len(cfg.SavedStreamers) == 0 {
-		mw.savedStreamersBox.Add(widget.NewLabelWithStyle("No saved streamers yet. Click ⭐ Save on any active stream or + Add Saved Streamer.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
+		emptySaved := widget.NewLabelWithStyle("No saved streamers yet. Click Save on any active stream or + Add Saved Streamer.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+		emptySaved.Wrapping = fyne.TextWrapWord
+		mw.savedStreamersBox.Add(emptySaved)
 	} else {
 		for _, st := range cfg.SavedStreamers {
 			streamer := st
@@ -566,10 +713,11 @@ func (mw *MainWindow) refreshMixerAndLibrary() {
 				chLabels = append(chLabels, fmt.Sprintf("%s:%s", c.Platform, c.Channel))
 			}
 			lbl := widget.NewLabel(fmt.Sprintf("%s (%s)", streamer.DisplayName, strings.Join(chLabels, ", ")))
-			tuneBtn := widget.NewButton("▶ Tune In", func() {
+			lbl.Truncation = fyne.TextTruncateEllipsis
+			tuneBtn := mw.newTipBtn("Tune In", theme.MediaPlayIcon(), "Connect to "+streamer.DisplayName, func() {
 				_ = mw.Session.ActivateStreamer(streamer)
 			})
-			delBtn := widget.NewButton("🗑", func() {
+			delBtn := mw.newTipBtn("", theme.DeleteIcon(), "Remove "+streamer.DisplayName+" from Saved Streamers", func() {
 				_ = mw.Session.UpdateConfig(func(c *config.Config) {
 					c.RemoveSavedStreamer(streamer.ID)
 				})
@@ -583,15 +731,18 @@ func (mw *MainWindow) refreshMixerAndLibrary() {
 
 	mw.lineupsBox.RemoveAll()
 	if len(cfg.Lineups) == 0 {
-		mw.lineupsBox.Add(widget.NewLabelWithStyle("No saved lineups yet. Tune in to multiple streams, set their Left/Right stereo pan, and click Save Active Streams as Lineup.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
+		emptyLineups := widget.NewLabelWithStyle("No saved lineups yet. Tune in to multiple streams, set their Left/Right stereo pan, and click Save Active Streams as Lineup.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+		emptyLineups.Wrapping = fyne.TextWrapWord
+		mw.lineupsBox.Add(emptyLineups)
 	} else {
 		for _, l := range cfg.Lineups {
 			lineup := l
 			lbl := widget.NewLabel(fmt.Sprintf("%s (%d streams)", lineup.Name, len(lineup.Slots)))
-			launchBtn := widget.NewButton("▶ Launch", func() {
+			lbl.Truncation = fyne.TextTruncateEllipsis
+			launchBtn := mw.newTipBtn("Launch", theme.MediaPlayIcon(), "Launch lineup "+lineup.Name, func() {
 				_ = mw.Session.ActivateLineup(lineup, true)
 			})
-			delBtn := widget.NewButton("🗑", func() {
+			delBtn := mw.newTipBtn("", theme.DeleteIcon(), "Delete lineup "+lineup.Name, func() {
 				_ = mw.Session.UpdateConfig(func(c *config.Config) {
 					c.RemoveLineup(lineup.ID)
 				})
@@ -606,39 +757,44 @@ func (mw *MainWindow) refreshMixerAndLibrary() {
 
 func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 	slotID := st.Config.SlotID()
-	statusBadge := "⚪ OFFLINE"
+	statusBadge := "[OFFLINE]"
 	switch st.Status {
 	case "connected":
-		statusBadge = "🟢 LIVE"
+		statusBadge = "[LIVE]"
 	case "waiting", "connecting":
-		statusBadge = "🟡 WAITING"
+		statusBadge = "[WAITING]"
 	}
 
 	titleLbl := widget.NewLabelWithStyle(
-		fmt.Sprintf("%s  [%s] %s", statusBadge, strings.ToUpper(st.Config.Platform), st.Config.EffectiveLabel()),
+		fmt.Sprintf("%s [%s] %s", statusBadge, strings.ToUpper(st.Config.Platform), st.Config.EffectiveLabel()),
 		fyne.TextAlignLeading,
 		fyne.TextStyle{Bold: true},
 	)
+	titleLbl.Truncation = fyne.TextTruncateEllipsis
 
-	muteText := "🔊 On"
+	muteText := "On"
+	muteIcon := theme.VolumeUpIcon()
 	if st.Config.Muted {
-		muteText = "🔇 Muted"
+		muteText = "Muted"
+		muteIcon = theme.VolumeMuteIcon()
 	}
-	var muteBtn *widget.Button
-	muteBtn = widget.NewButton(muteText, func() {
+	var muteBtn *TooltipButton
+	muteBtn = mw.newTipBtn(muteText, muteIcon, "Toggle TTS audio for "+st.Config.EffectiveLabel(), func() {
 		var nowMuted bool
 		mw.Session.UpdateSlot(slotID, func(sc *config.StreamSlotConfig) {
 			sc.Muted = !sc.Muted
 			nowMuted = sc.Muted
 		})
 		if nowMuted {
-			muteBtn.SetText("🔇 Muted")
+			muteBtn.SetText("Muted")
+			muteBtn.SetIcon(theme.VolumeMuteIcon())
 		} else {
-			muteBtn.SetText("🔊 On")
+			muteBtn.SetText("On")
+			muteBtn.SetIcon(theme.VolumeUpIcon())
 		}
 	})
 
-	saveBtn := widget.NewButton("⭐ Save", func() {
+	saveBtn := mw.newTipBtn("Save", theme.DocumentSaveIcon(), "Bookmark "+st.Config.EffectiveLabel()+" to Saved Streamers", func() {
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.AddOrUpdateSavedStreamer(config.SavedStreamer{
 				ID:          slotID,
@@ -649,12 +805,12 @@ func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 		mw.refreshMixerAndLibrary()
 	})
 
-	discBtn := widget.NewButton("✕", func() {
+	discBtn := mw.newTipBtn("", theme.CancelIcon(), "Disconnect and remove "+st.Config.EffectiveLabel(), func() {
 		_ = mw.Session.RemoveSlot(slotID)
 	})
 	discBtn.Importance = widget.DangerImportance
 
-	headerRow := container.NewBorder(nil, nil, titleLbl, container.NewHBox(muteBtn, saveBtn, discBtn), layout.NewSpacer())
+	headerRow := container.NewBorder(nil, nil, nil, container.NewHBox(muteBtn, saveBtn, discBtn), titleLbl)
 
 	// Volume & Stereo Pan controls
 	volLbl := widget.NewLabel(fmt.Sprintf("Vol: %.0f%%", st.Config.Volume*100))
@@ -680,9 +836,9 @@ func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 		})
 	}
 
-	panLBtn := widget.NewButton("L", func() { panSld.SetValue(-75) })
-	panCBtn := widget.NewButton("C", func() { panSld.SetValue(0) })
-	panRBtn := widget.NewButton("R", func() { panSld.SetValue(75) })
+	panLBtn := mw.newTipBtn("L", nil, "Pan stream audio 75% Left", func() { panSld.SetValue(-75) })
+	panCBtn := mw.newTipBtn("C", nil, "Center stream audio (Both ears)", func() { panSld.SetValue(0) })
+	panRBtn := mw.newTipBtn("R", nil, "Pan stream audio 75% Right", func() { panSld.SetValue(75) })
 
 	mixerRow := container.NewGridWithColumns(2,
 		container.NewBorder(nil, nil, volLbl, nil, volSld),
@@ -750,10 +906,12 @@ func (mw *MainWindow) updateNowSpeaking(entry *listener.LogEntry) {
 	defer mw.uiMu.Unlock()
 
 	if entry == nil {
-		mw.nowSpeakingLbl.SetText("🔇 Idle — Listening for chat...")
+		mw.lastStatusText = "Idle — Listening for chat..."
+		mw.nowSpeakingLbl.SetText(mw.lastStatusText)
 		return
 	}
-	mw.nowSpeakingLbl.SetText(fmt.Sprintf("🔊 Speaking [%s %s] %s: %s", entry.Channel, formatPanBadge(entry.Pan), entry.UserName, entry.Text))
+	mw.lastStatusText = fmt.Sprintf("Speaking [%s %s] %s: %s", entry.Channel, formatPanBadge(entry.Pan), entry.UserName, entry.Text)
+	mw.nowSpeakingLbl.SetText(mw.lastStatusText)
 }
 
 func (mw *MainWindow) registerHotkeys(hk config.HotkeyConfig) {
@@ -763,9 +921,11 @@ func (mw *MainWindow) registerHotkeys(hk config.HotkeyConfig) {
 		fyne.Do(func() {
 			paused := mw.Session.TogglePause()
 			if paused {
-				mw.pauseBtn.SetText("▶ Resume")
+				mw.pauseBtn.SetText("Resume")
+				mw.pauseBtn.SetIcon(theme.MediaPlayIcon())
 			} else {
-				mw.pauseBtn.SetText("⏸ Pause")
+				mw.pauseBtn.SetText("Pause")
+				mw.pauseBtn.SetIcon(theme.MediaPauseIcon())
 			}
 		})
 	})
@@ -825,9 +985,9 @@ func (mw *MainWindow) showSaveLineupDialog() {
 
 func (mw *MainWindow) showAddSavedStreamerDialog() {
 	nameEntry := widget.NewEntry()
-	nameEntry.SetPlaceHolder("Creator Display Name (e.g. PirateSoftware)")
+	nameEntry.SetPlaceHolder("Creator Display Name (e.g. MoCoMade)")
 	targetsEntry := widget.NewMultiLineEntry()
-	targetsEntry.SetPlaceHolder("One channel or URL per line:\ntwitch:piratesoftware\nyoutube:@PirateSoftware")
+	targetsEntry.SetPlaceHolder("One channel or URL per line:\ntwitch:mocomade\nyoutube:@MoCoMade")
 
 	dialog.ShowForm("Add Saved Streamer (Single or Multi-Platform)", "Save", "Cancel",
 		[]*widget.FormItem{
@@ -896,21 +1056,48 @@ func (mw *MainWindow) showAssignVoiceDialog(username string) {
 func formatLogBadge(entry listener.LogEntry) string {
 	prefix := ""
 	if entry.IsMention {
-		prefix = "🔔 @MENTION "
+		prefix = "[@MENTION] "
 	} else if entry.IsPriority {
-		prefix = "⭐ "
+		prefix = "[VIP] "
 	}
 	switch entry.Status {
 	case listener.StatusSpeaking:
-		return prefix + "🔊"
+		return prefix + "[SPEAKING]"
 	case listener.StatusQueued:
-		return prefix + "⏳"
+		return prefix + "[QUEUED]"
 	case listener.StatusSpoken:
-		return prefix + "✓"
+		return prefix + "[OK]"
 	case listener.StatusSkipped:
-		return fmt.Sprintf("⏭ (%s)", entry.SkipReason)
+		return fmt.Sprintf("[SKIP: %s]", formatSkipReason(entry.SkipReason))
 	default:
-		return prefix + "•"
+		return prefix + "[CHAT]"
+	}
+}
+
+func formatSkipReason(reason string) string {
+	switch reason {
+	case "empty_message":
+		return "Emote"
+	case "short_hype_spam":
+		return "Spam"
+	case "chatter_cooldown":
+		return "Cooldown"
+	case "global_pacing":
+		return "Pacing"
+	case "muted_chatter":
+		return "Muted"
+	case "slot_muted":
+		return "Stream Muted"
+	case "role_filter_subs_vips_mods", "role_filter_mods_mentions":
+		return "Role Filter"
+	case "no_text_event":
+		return "Event"
+	case "queue_cleared":
+		return "Cleared"
+	case "stale_ttl":
+		return "Stale"
+	default:
+		return reason
 	}
 }
 

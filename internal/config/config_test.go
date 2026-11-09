@@ -22,11 +22,11 @@ func TestFileStoreRoundTripAndLibraryManagement(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Identity.MyUsernames = []string{"AccessibilityViewer"}
 	cfg.AddOrUpdateSavedStreamer(SavedStreamer{
-		ID:          "piratesoftware",
-		DisplayName: "PirateSoftware",
+		ID:          "mocomade",
+		DisplayName: "MoCoMade",
 		Channels: []StreamSlotConfig{
-			{Platform: "twitch", Channel: "piratesoftware", Volume: 1.0, Pan: -0.5},
-			{Platform: "youtube", Channel: "@PirateSoftware", Volume: 1.0, Pan: 0.5},
+			{Platform: "twitch", Channel: "mocomade", Volume: 1.0, Pan: -0.5},
+			{Platform: "youtube", Channel: "@MoCoMade", Volume: 1.0, Pan: 0.5},
 		},
 	})
 	cfg.AddOrUpdateLineup(Lineup{
@@ -60,7 +60,7 @@ func TestFileStoreRoundTripAndLibraryManagement(t *testing.T) {
 		t.Fatalf("unexpected slot pans: %+v", loaded.Lineups[0].Slots)
 	}
 
-	loaded.RemoveSavedStreamer("piratesoftware")
+	loaded.RemoveSavedStreamer("mocomade")
 	loaded.RemoveLineup("co-stream")
 	if len(loaded.SavedStreamers) != 0 || len(loaded.Lineups) != 0 {
 		t.Fatalf("expected saved streamers and lineups to be removed")

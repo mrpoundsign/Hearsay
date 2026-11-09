@@ -186,6 +186,9 @@ func SelectChatterVoiceWithPronouns(ev chat.Event, slot config.StreamSlotConfig,
 		if len(pool) == 0 {
 			pool = DefaultSupertonicVoicePool
 		}
+		if len(slot.VoicePool) == 0 && len(cfg.Audio.DisabledChatterVoices) > 0 {
+			pool = chat.FilterPermittedVoices(pool, cfg.Audio.DisabledChatterVoices)
+		}
 		return chat.SelectSmartChatterVoice(
 			platLower,
 			userKey,

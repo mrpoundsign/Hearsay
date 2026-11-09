@@ -204,6 +204,13 @@ func TestSelectChatterVoiceAndSmartChannelSwitch(t *testing.T) {
 		t.Fatalf("expected ChatterVoices map not to be mutated by auto-hashing, got %d entries", len(cfg.Identity.ChatterVoices))
 	}
 
+	// Exclude all masculine voices except supertonic:m4
+	cfg.Audio.DisabledChatterVoices = []string{"supertonic:m1", "supertonic:m2", "supertonic:m3", "supertonic:m5"}
+	if gotPerm := SelectChatterVoice(evMasc, slotA, cfg, DefaultSupertonicVoicePool); gotPerm != "supertonic:m4" {
+		t.Fatalf("expected only permitted masculine voice supertonic:m4, got %q", gotPerm)
+	}
+	cfg.Audio.DisabledChatterVoices = nil
+
 	evOverride := chat.Event{Platform: "twitch", UserName: "SpecialUser", Text: "Custom voice"}
 	if got := SelectChatterVoice(evOverride, slotA, cfg, DefaultSupertonicVoicePool); got != "supertonic:m5" {
 		t.Fatalf("expected explicit chatter voice supertonic:m5, got %q", got)

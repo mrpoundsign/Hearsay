@@ -41,9 +41,10 @@ type AudioConfig struct {
 	EnabledModels        []string `json:"enabled_models"`
 	UseGPU               bool     `json:"use_gpu"`
 	NumThreads           int      `json:"num_threads"`
-	HashChatterVoices    bool     `json:"hash_chatter_voices"`
-	SmartGenderVoices    bool     `json:"smart_gender_voices"`
-	UnknownGenderPolicy  string   `json:"unknown_gender_policy"`
+	HashChatterVoices     bool     `json:"hash_chatter_voices"`
+	SmartGenderVoices     bool     `json:"smart_gender_voices"`
+	UnknownGenderPolicy   string   `json:"unknown_gender_policy"`
+	DisabledChatterVoices []string `json:"disabled_chatter_voices,omitempty"`
 	SpeakChannelOnSwitch bool     `json:"speak_channel_on_switch"`
 	SpeakNames           bool     `json:"speak_names"`
 	NaturalizeNames      bool     `json:"naturalize_names"`

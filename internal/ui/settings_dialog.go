@@ -93,6 +93,39 @@ func labelToDupWords(lbl string) int {
 	}
 }
 
+var unknownGenderOptions = []string{
+	"Balanced 50/50 (Feminine & Masculine)",
+	"Prefer Feminine Voices",
+	"Prefer Masculine Voices",
+	"Use Default Voice",
+}
+
+func unknownGenderPolicyToLabel(policy string) string {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case "prefer_feminine":
+		return "Prefer Feminine Voices"
+	case "prefer_masculine":
+		return "Prefer Masculine Voices"
+	case "default_voice":
+		return "Use Default Voice"
+	default:
+		return "Balanced 50/50 (Feminine & Masculine)"
+	}
+}
+
+func labelToUnknownGenderPolicy(lbl string) string {
+	switch lbl {
+	case "Prefer Feminine Voices":
+		return "prefer_feminine"
+	case "Prefer Masculine Voices":
+		return "prefer_masculine"
+	case "Use Default Voice":
+		return "default_voice"
+	default:
+		return "balanced"
+	}
+}
+
 func availableVoiceOptions(cfg *config.Config, eng tts.Engine) ([]string, map[string]string) {
 	families := cfg.Audio.EffectiveEnabledModels()
 	rawLabels := tts.VoiceDisplayLabelsForModels(families)
@@ -285,8 +318,38 @@ func (mw *MainWindow) showSettingsDialog() {
 	}
 
 	// 3. Coalescence, Chat Rules & Crowd Control
-	hashVoicesCk := widget.NewCheck("Assign a unique neural voice to each chatter automatically (FNV-1a hash)", nil)
+	unknownGenderSel := widget.NewSelect(unknownGenderOptions, nil)
+	unknownGenderSel.SetSelected(unknownGenderPolicyToLabel(cfg.Audio.UnknownGenderPolicy))
+
+	smartGenderCk := widget.NewCheck("Smart gender voice matching (chat pronouns + username analysis)", func(b bool) {
+		if b {
+			unknownGenderSel.Enable()
+		} else {
+			unknownGenderSel.Disable()
+		}
+	})
+	smartGenderCk.SetChecked(cfg.Audio.SmartGenderVoices)
+
+	hashVoicesCk := widget.NewCheck("Assign a unique neural voice to each chatter automatically (never pollutes custom list)", func(b bool) {
+		if b {
+			smartGenderCk.Enable()
+			if smartGenderCk.Checked {
+				unknownGenderSel.Enable()
+			} else {
+				unknownGenderSel.Disable()
+			}
+		} else {
+			smartGenderCk.Disable()
+			unknownGenderSel.Disable()
+		}
+	})
 	hashVoicesCk.SetChecked(cfg.Audio.HashChatterVoices)
+	if !cfg.Audio.HashChatterVoices {
+		smartGenderCk.Disable()
+		unknownGenderSel.Disable()
+	} else if !cfg.Audio.SmartGenderVoices {
+		unknownGenderSel.Disable()
+	}
 
 	speakSwitchCk := widget.NewCheck("Announce channel name only when active speaker switches streams", nil)
 	speakSwitchCk.SetChecked(cfg.Audio.SpeakChannelOnSwitch)
@@ -353,6 +416,8 @@ func (mw *MainWindow) showSettingsDialog() {
 			packStatusLbl,
 			widget.NewSeparator(),
 			hashVoicesCk,
+			smartGenderCk,
+			container.NewBorder(nil, nil, widget.NewLabel("Unknown Gender Voice Pool:"), nil, unknownGenderSel),
 			container.NewBorder(nil, nil, widget.NewLabel("Default Voice:"), previewDefaultBtn, defaultVoiceSel),
 			widget.NewSeparator(),
 			widget.NewLabelWithStyle("Custom Chatter Voice Assignments:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -430,6 +495,8 @@ func (mw *MainWindow) showSettingsDialog() {
 				c.Audio.DefaultVoice = defVoiceID
 			}
 			c.Audio.HashChatterVoices = hashVoicesCk.Checked
+			c.Audio.SmartGenderVoices = smartGenderCk.Checked
+			c.Audio.UnknownGenderPolicy = labelToUnknownGenderPolicy(unknownGenderSel.Selected)
 			c.Audio.SpeakChannelOnSwitch = speakSwitchCk.Checked
 			c.Audio.SpeakNames = speakNamesCk.Checked
 			c.Audio.CoalesceSeconds = labelToCoalesceSec(coalesceSel.Selected)

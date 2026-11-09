@@ -161,11 +161,23 @@ func TestSelectChatterVoiceAndSmartChannelSwitch(t *testing.T) {
 		DisplayName: "Streamer B",
 	}
 
-	ev1 := chat.Event{Platform: "twitch", UserName: "Alice", Text: "Hello there"}
+	ev1 := chat.Event{Platform: "twitch", UserName: "Alice", DisplayName: "Alice", Text: "Hello there"}
 	v1 := SelectChatterVoice(ev1, slotA, cfg, DefaultSupertonicVoicePool)
 	v2 := SelectChatterVoice(ev1, slotA, cfg, DefaultSupertonicVoicePool)
 	if v1 == "" || v1 != v2 {
 		t.Fatalf("expected deterministic voice hash for Alice, got %q and %q", v1, v2)
+	}
+	if chat.ClassifyVoiceGender(v1) != chat.GenderFeminine {
+		t.Fatalf("expected feminine voice for Alice with SmartGenderVoices=true, got %q", v1)
+	}
+
+	evMasc := chat.Event{Platform: "twitch", UserName: "mrpoundsign", DisplayName: "MrPoundSign", Text: "Testing"}
+	vMasc := SelectChatterVoice(evMasc, slotA, cfg, DefaultSupertonicVoicePool)
+	if chat.ClassifyVoiceGender(vMasc) != chat.GenderMasculine {
+		t.Fatalf("expected masculine voice for MrPoundSign with SmartGenderVoices=true, got %q", vMasc)
+	}
+	if len(cfg.Identity.ChatterVoices) != 1 {
+		t.Fatalf("expected ChatterVoices map not to be mutated by auto-hashing, got %d entries", len(cfg.Identity.ChatterVoices))
 	}
 
 	evOverride := chat.Event{Platform: "twitch", UserName: "SpecialUser", Text: "Custom voice"}

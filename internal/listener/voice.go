@@ -10,6 +10,7 @@ import (
 	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/mrpoundsign/Hearsay/internal/config"
 	"github.com/mrpoundsign/TownCrier/pkg/chat"
+	"github.com/mrpoundsign/TownCrier/pkg/tts"
 )
 
 // DefaultSupertonicVoicePool is the fallback voice pool when deterministic chatter voice hashing is active.
@@ -145,9 +146,15 @@ func ensureReadableOnDark(hexColor string) string {
 
 // SelectChatterVoice resolves the TTS voice ID for a chatter on a given stream slot.
 func SelectChatterVoice(ev chat.Event, slot config.StreamSlotConfig, cfg *config.Config, availableVoices []string) string {
-	userKey := strings.ToLower(strings.TrimSpace(ev.UserName))
+	return SelectChatterVoiceWithPronouns(ev, slot, cfg, availableVoices, nil)
+}
+
+// SelectChatterVoiceWithPronouns resolves the TTS voice ID for a chatter using explicit overrides,
+// smart gender detection (pronoun cache + username analysis), and deterministic hashing without mutating ChatterVoices.
+func SelectChatterVoiceWithPronouns(ev chat.Event, slot config.StreamSlotConfig, cfg *config.Config, availableVoices []string, pronouns *chat.PronounCache) string {
+	userKey := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ev.UserName), "@"))
 	if userKey == "" {
-		userKey = strings.ToLower(strings.TrimSpace(ev.DisplayName))
+		userKey = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ev.DisplayName), "@"))
 	}
 	platLower := strings.ToLower(strings.TrimSpace(ev.Platform))
 
@@ -160,27 +167,38 @@ func SelectChatterVoice(ev chat.Event, slot config.StreamSlotConfig, cfg *config
 		}
 	}
 
+	fallbackVoice := strings.TrimSpace(slot.Voice)
+	if fallbackVoice == "" && cfg != nil && strings.TrimSpace(cfg.Audio.DefaultVoice) != "" {
+		fallbackVoice = strings.TrimSpace(cfg.Audio.DefaultVoice)
+	}
+	if fallbackVoice == "" {
+		fallbackVoice = "supertonic:f1"
+	}
+
 	if cfg != nil && cfg.Audio.HashChatterVoices && userKey != "" {
 		pool := slot.VoicePool
 		if len(pool) == 0 {
 			pool = availableVoices
 		}
 		if len(pool) == 0 {
+			pool = tts.VoiceIDsForModels(cfg.Audio.EffectiveEnabledModels())
+		}
+		if len(pool) == 0 {
 			pool = DefaultSupertonicVoicePool
 		}
-		h := fnv.New32a()
-		_, _ = h.Write([]byte(platLower + ":" + userKey))
-		idx := int(h.Sum32()) % len(pool)
-		return pool[idx]
+		return chat.SelectSmartChatterVoice(
+			platLower,
+			userKey,
+			ev.DisplayName,
+			pool,
+			fallbackVoice,
+			cfg.Audio.SmartGenderVoices,
+			cfg.Audio.UnknownGenderPolicy,
+			pronouns,
+		)
 	}
 
-	if strings.TrimSpace(slot.Voice) != "" {
-		return strings.TrimSpace(slot.Voice)
-	}
-	if cfg != nil && strings.TrimSpace(cfg.Audio.DefaultVoice) != "" {
-		return strings.TrimSpace(cfg.Audio.DefaultVoice)
-	}
-	return "supertonic:f1"
+	return fallbackVoice
 }
 
 // FormatSpokenText constructs the final text sent to the TTS engine, including the smart

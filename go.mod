@@ -4,7 +4,8 @@ go 1.27.1
 
 require (
 	fyne.io/fyne/v2 v2.8.2
-	github.com/mrpoundsign/TownCrier v0.0.10-0.20261109153812-ce93647088b5
+	github.com/gempir/go-twitch-irc/v4 v4.4.1
+	github.com/mrpoundsign/TownCrier v0.0.10-0.20261109182558-1f3647e9dead
 	github.com/mrpoundsign/appinstaller v0.0.1
 )
 
@@ -24,7 +25,6 @@ require (
 	github.com/fyne-io/glfw-js v0.4.0 // indirect
 	github.com/fyne-io/image v0.1.1 // indirect
 	github.com/fyne-io/oksvg v0.2.1-0.20260918172519-a9af55fa95d9 // indirect
-	github.com/gempir/go-twitch-irc/v4 v4.4.1 // indirect
 	github.com/gen2brain/malgo v0.11.26 // indirect
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276 // indirect
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.2 // indirect

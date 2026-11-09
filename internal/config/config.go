@@ -42,6 +42,8 @@ type AudioConfig struct {
 	UseGPU               bool     `json:"use_gpu"`
 	NumThreads           int      `json:"num_threads"`
 	HashChatterVoices    bool     `json:"hash_chatter_voices"`
+	SmartGenderVoices    bool     `json:"smart_gender_voices"`
+	UnknownGenderPolicy  string   `json:"unknown_gender_policy"`
 	SpeakChannelOnSwitch bool     `json:"speak_channel_on_switch"`
 	SpeakNames           bool     `json:"speak_names"`
 	CoalesceSeconds      int      `json:"coalesce_seconds"`
@@ -158,6 +160,8 @@ func DefaultConfig() *Config {
 			UseGPU:               true,
 			NumThreads:           4,
 			HashChatterVoices:    true,
+			SmartGenderVoices:    true,
+			UnknownGenderPolicy:  "balanced",
 			SpeakChannelOnSwitch: true,
 			SpeakNames:           true,
 			CoalesceSeconds:      30,
@@ -218,6 +222,10 @@ func (c *Config) Normalize() {
 	}
 	if c.Audio.NumThreads <= 0 {
 		c.Audio.NumThreads = 4
+	}
+	if strings.TrimSpace(c.Audio.UnknownGenderPolicy) == "" {
+		c.Audio.UnknownGenderPolicy = "balanced"
+		c.Audio.SmartGenderVoices = true
 	}
 	if c.Audio.CoalesceSeconds < 0 {
 		c.Audio.CoalesceSeconds = 0

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/mrpoundsign/Hearsay/internal/config"
@@ -113,6 +114,7 @@ type Session struct {
 	botMatcher       *bots.Matcher
 	botConfig        *tcConfig.Config
 	translator       *translate.Service
+	pronouns         *chat.PronounCache
 	crowd            *CrowdController
 	connectorFactory ConnectorFactory
 
@@ -150,8 +152,12 @@ func NewSession(cfg *config.Config, store config.Store) *Session {
 	botCfg.Bots.IgnoreKnownBots = true
 
 	transSvc := translate.NewService()
-	if sharedCache := tts.DefaultSharedCacheDir(); sharedCache != "" {
-		transSvc.SetDiskCachePath(filepath.Join(sharedCache, "translations.json"))
+	pronounCache := chat.NewPronounCache()
+	if !testing.Testing() {
+		if sharedCache := tts.DefaultSharedCacheDir(); sharedCache != "" {
+			transSvc.SetDiskCachePath(filepath.Join(sharedCache, "translations.json"))
+			pronounCache.SetDiskCachePath(filepath.Join(sharedCache, "pronouns.json"))
+		}
 	}
 
 	s := &Session{
@@ -161,6 +167,7 @@ func NewSession(cfg *config.Config, store config.Store) *Session {
 		botMatcher:    matcher,
 		botConfig:     botCfg,
 		translator:    transSvc,
+		pronouns:      pronounCache,
 		crowd:         NewCrowdController(),
 		slots:         make(map[string]*activeSlot),
 		speechCh:      make(chan speechItem, MaxSpeechQueue),
@@ -672,7 +679,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 	if eng != nil {
 		availVoices = eng.Voices()
 	}
-	voiceID := SelectChatterVoice(*ev, slotCfg, cfgSnap, availVoices)
+	voiceID := SelectChatterVoiceWithPronouns(*ev, slotCfg, cfgSnap, availVoices, s.pronouns)
 
 	entryID := s.nextEntryID.Add(1)
 	speaker := chatterName(*ev)

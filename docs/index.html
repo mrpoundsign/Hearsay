@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hearsay — Open-Source Multi-Stream Live Chat Reader &amp; Spatial Audio Mixer</title>
+  <meta name="description" content="Open-source desktop live chat reader and stereo spatial audio mixer for Twitch, YouTube, Kick, and TikTok viewers. Powered by 100% local neural TTS with zero logins or API keys.">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="google-site-verification" content="RJ-0Jr9dzDzeXes7Bo1_Vgc5GKHw8R2ADLe-tBge_tU" />
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <img src="icon.png" alt="Hearsay Logo" width="56" height="56" fetchpriority="high">
+        <div>
+          <div class="brand-title">Hearsay</div>
+          <div class="brand-subtitle">Multi-Stream Live Chat Reader &amp; Spatial Audio Mixer for Viewers</div>
+        </div>
+      </a>
+      <div class="header-actions">
+        <a class="btn" href="https://github.com/mrpoundsign/Hearsay/releases/latest" target="_blank" rel="noopener noreferrer">Download Latest Release</a>
+        <a class="btn btn-secondary" href="https://github.com/mrpoundsign/Hearsay" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="sidebar">
+        <nav aria-label="Documentation">
+          <div class="sidebar-group">
+            <div class="sidebar-heading">Documentation</div>
+            <ul class="sidebar-nav" role="list">
+              <li>
+                <a class="sidebar-link" href="index.html" aria-current="page">Overview &amp; Home</a>
+                <ul class="sidebar-subnav" role="list">
+                  <li><a class="sidebar-sublink" href="#zero-login">Zero-Login Quick Tune</a></li>
+                  <li><a class="sidebar-sublink" href="#stereo-mixer">Multi-Stream Stereo Mixer</a></li>
+                  <li><a class="sidebar-sublink" href="#crowd-control">Crowd Control &amp; Mention Bypass</a></li>
+                  <li><a class="sidebar-sublink" href="#smart-voices">Smart Gender Voice Matching</a></li>
+                  <li><a class="sidebar-sublink" href="#accessibility">Accessibility &amp; Mini Player</a></li>
+                  <li><a class="sidebar-sublink" href="#shared-models">Shared Neural Voice Packs</a></li>
+                  <li><a class="sidebar-sublink" href="#compliance">Legal &amp; Licensing</a></li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-heading">Legal &amp; Policies</div>
+            <ul class="sidebar-nav" role="list">
+              <li><a class="sidebar-link" href="privacy.html">Privacy Policy</a></li>
+              <li><a class="sidebar-link" href="terms.html">Terms of Service</a></li>
+            </ul>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-heading">Project &amp; Ecosystem</div>
+            <ul class="sidebar-nav" role="list">
+              <li><a class="sidebar-link" href="https://github.com/mrpoundsign/Hearsay" target="_blank" rel="noopener noreferrer">GitHub Repository &#8599;</a></li>
+              <li><a class="sidebar-link" href="https://github.com/mrpoundsign/Hearsay/releases" target="_blank" rel="noopener noreferrer">Releases &amp; Installer &#8599;</a></li>
+              <li><a class="sidebar-link" href="https://github.com/mrpoundsign/Hearsay/issues" target="_blank" rel="noopener noreferrer">Report an Issue &#8599;</a></li>
+              <li><a class="sidebar-link" href="https://mrpoundsign.com/TownCrier/" target="_blank" rel="noopener noreferrer">TownCrier (For Streamers) &#8599;</a></li>
+              <li><a class="sidebar-link" href="https://mrpoundsign.com/" target="_blank" rel="noopener noreferrer">mrpoundsign Suite &#8599;</a></li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <div class="content-column">
+        <main>
+          <!-- Hero -->
+          <section class="hero">
+            <h1>Listen to Live Stream Chat Like a Spatial Radio Deck</h1>
+            <p>
+              <strong>Hearsay</strong> is a free, open-source Windows, macOS, and Linux desktop application built for <strong>livestream viewers, co-stream fans, and low-vision or multitasking listeners</strong>.
+            </p>
+            <p>
+              Tune into one or more live streams across <strong>Twitch, YouTube Live, Kick, and TikTok</strong> simultaneously—with <strong>zero account logins, zero OAuth setup, and zero cloud subscriptions</strong>—and hear chat read aloud in real time using 100% local neural Text-to-Speech.
+            </p>
+            <div class="btn-group">
+              <a class="btn" href="https://github.com/mrpoundsign/Hearsay/releases/latest" target="_blank" rel="noopener noreferrer">Download Hearsay</a>
+              <a class="btn btn-secondary" href="https://github.com/mrpoundsign/Hearsay" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+              <a class="btn btn-secondary" href="https://mrpoundsign.com/TownCrier/">Looking for Streamer TTS? See TownCrier &rarr;</a>
+            </div>
+          </section>
+
+          <!-- Feature 1: Zero-Login Quick Tune -->
+          <section id="zero-login" class="card">
+            <span class="badge">Zero-Auth Listener</span>
+            <h2>Paste Any Stream URL or Channel Name &mdash; Instant Tune-In</h2>
+            <p>
+              Unlike streamer broadcast tools that require OAuth tokens and API keys, Hearsay is designed from the ground up as a <strong>zero-login viewer companion</strong>:
+            </p>
+            <div class="grid-2">
+              <div class="grid-item">
+                <h3>1-Click Platform &amp; URL Detection</h3>
+                <p>Select <strong>Twitch</strong>, <strong>YouTube</strong>, <strong>Kick</strong>, or <strong>TikTok</strong> and type a channel name—or simply paste any live stream URL directly into the Quick Tune bar.</p>
+              </div>
+              <div class="grid-item">
+                <h3>Saved Streamers &amp; Multi-Platform Creators</h3>
+                <p>Bookmark your favorite creators (including multistreamers who broadcast on both Twitch and YouTube) for 1-click tuning whenever they go live.</p>
+              </div>
+              <div class="grid-item">
+                <h3>Co-Stream &amp; Tournament Lineups</h3>
+                <p>Save multiple active streams along with their individual volume levels and Left/Right stereo panning positions as a reusable 1-click <strong>Lineup</strong> preset.</p>
+              </div>
+              <div class="grid-item">
+                <h3>Spatial Audio Earcons</h3>
+                <p>Hear subtle, stereo-panned harmonic chimes when a tuned channel goes live, goes offline, or when someone <code>@mentions</code> your username in chat.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Feature 2: Stereo Mixer -->
+          <section id="stereo-mixer" class="card">
+            <span class="badge">Spatial Audio</span>
+            <h2>Multi-Stream Stereo Panning &amp; Audio Mixer</h2>
+            <p>
+              Watching a co-stream, squad stream, or esports tournament? Hearsay's per-stream audio mixer lets your ears effortlessly separate multiple chat rooms at once:
+            </p>
+            <ul>
+              <li><strong>Constant-Power Stereo Panning (<code>L100</code> &ndash; <code>C</code> &ndash; <code>R100</code>):</strong> Pan Streamer A to your <strong>Left ear (<code>L75</code>)</strong> and Streamer B to your <strong>Right ear (<code>R75</code>)</strong> with 1-click <code>L</code> / <code>C</code> / <code>R</code> buttons or a smooth slider.</li>
+              <li><strong>Smart Channel-Switch Announcements:</strong> When listening to multiple streams, Hearsay announces the channel name <em>only</em> when the active speaker switches from one stream to another—never repeating the channel name on consecutive messages from the same stream.</li>
+              <li><strong>Consecutive Speaker Coalescing:</strong> When the same chatter sends multiple messages in a row within your configured window (default <code>30s</code>), Hearsay omits repeating their username so follow-up thoughts flow naturally.</li>
+              <li><strong>Independent Output Device Selection:</strong> Route Hearsay to your headphones or speakers independently of your system default audio device, with instant <code>0%–200%</code> master and per-stream gain controls and <code>0.7x–2.0x</code> speech speed.</li>
+            </ul>
+          </section>
+
+          <!-- Feature 3: Crowd Control & Mention Bypass -->
+          <section id="crowd-control" class="card">
+            <span class="badge">High-Velocity Chat</span>
+            <h2>Smart Crowd Control, Self-Message Muting &amp; <code>@Mention</code> Priority</h2>
+            <p>
+              Stay engaged in fast-moving streams without getting overwhelmed by chat bursts or emote walls:
+            </p>
+            <ul>
+              <li><strong>Per-Stream Crowd Filter Modes:</strong> Set each stream independently to <strong>All Chatters</strong>, <strong>Subs + VIPs + Mods</strong>, or <strong>Mods + Streamer + @Mentions</strong>.</li>
+              <li><strong>Priority <code>@Mention</code> &amp; VIP Friend Bypass:</strong> Enter your own username(s) in <strong>Settings &rarr; Identity &amp; Friends</strong> (supporting optional platform scoping like <code>twitch:myname, youtube:@MyHandle</code>). Whenever someone replies to or <code>@mentions</code> you—or when the broadcaster or one of your starred <strong>VIP Friends</strong> speaks—their message automatically bypasses Crowd Control and cooldowns.</li>
+              <li><strong>Automatic Self-Message Muting:</strong> When you type in chat yourself, Hearsay recognizes your configured username (case-insensitively and ignoring leading <code>@</code> symbols) and marks your message as <code>[YOU]</code> in the Live Log without reading your own words back to you.</li>
+              <li><strong>Hype-Spam &amp; Emote Deduplication:</strong> Automatically skips 1-word hype spam (<code>LUL</code>, <code>GG</code>, <code>KEKW</code>, <code>W</code>, <code>F</code>), collapses repeated emotes/words, and provides a 1-click <strong>Speak Emotes</strong> toggle right in the Live Log header.</li>
+            </ul>
+          </section>
+
+          <!-- Feature 4: Smart Gender Voice Matching -->
+          <section id="smart-voices" class="card">
+            <span class="badge">Chatter Identity</span>
+            <h2>Smart Gender Voice Matching &amp; Deterministic Chatter Voices</h2>
+            <p>
+              Give every chatter in the room a distinct, recognizable neural voice without lifting a finger:
+            </p>
+            <ul>
+              <li><strong>Automatic Per-Chatter Voice Hashing:</strong> Deterministically assigns each chatter a consistent voice from your enabled neural voice packs for the entire session—without cluttering your custom voice override list.</li>
+              <li><strong>3-Tier Smart Gender Matching:</strong> Automatically pairs chatters with feminine, masculine, or neutral voices using:
+                <br>&bull; <strong>Twitch Pronouns API Cache:</strong> Asynchronous lookup and local disk caching of public pronouns via <code>alejo.io</code> (<code>she/her</code>, <code>he/him</code>, <code>they/them</code>).
+                <br>&bull; <strong>Self-Identification Detection:</strong> Recognizes explicit pronoun self-identification in chat messages.
+                <br>&bull; <strong>Offline First-Name Lexicon:</strong> Matches 360+ common given names inside usernames and display names, with a configurable fallback pool (<em>Balanced 50/50</em>, <em>Prefer Feminine</em>, <em>Prefer Masculine</em>, or <em>Default Voice</em>).
+              </li>
+              <li><strong>Custom Voice Pinning:</strong> Click the <code>&ctdot;</code> menu on any chat message to pin a specific neural voice to a favorite chatter or streamer, toggle them as a Priority VIP, or mute them.</li>
+            </ul>
+          </section>
+
+          <!-- Feature 5: Accessibility & Mini Player -->
+          <section id="accessibility" class="card">
+            <span class="badge">Accessibility First</span>
+            <h2>UI Scaling, High-Contrast Mode, Global Hotkeys &amp; Mini Player</h2>
+            <p>
+              Built for comfort whether Hearsay is docked beside a stream window or running in the background:
+            </p>
+            <ul>
+              <li><strong>Live UI &amp; Font Scaling:</strong> Adjust overall interface scaling (<code>85%</code> to <code>150%</code> or <code>Auto (OS)</code>) and independent text scaling (<code>100%</code> to <code>175%</code>) directly from the top header bar.</li>
+              <li><strong>WCAG AAA High-Contrast Theme:</strong> Toggle 1-click <strong>High Contrast</strong> mode for pure black backgrounds, crisp borders, and high-contrast Deep Emerald controls, plus distinct per-chatter username colors and optional circular channel avatar icons.</li>
+              <li><strong>Compact Mini Player Mode:</strong> Collapse the full Radio Deck into a compact <code>480&times;320</code> Mini Player showing transport controls, the Now Speaking banner, and the live chat feed.</li>
+              <li><strong>Global Transport Hotkeys &amp; Sub-50ms Panic Mute:</strong> Control playback from any application with customizable global shortcuts for <strong>Pause/Resume</strong> (<kbd>Ctrl+Shift+P</kbd>), <strong>Skip Current</strong> (<kbd>Ctrl+Shift+S</kbd>), <strong>Replay Last</strong> (<kbd>Ctrl+Shift+R</kbd>), and instant <strong>Emergency Panic Mute</strong> (<kbd>Ctrl+Shift+M</kbd> or <kbd>Esc</kbd>).</li>
+            </ul>
+          </section>
+
+          <!-- Feature 6: Shared Voice Packs -->
+          <section id="shared-models" class="card">
+            <span class="badge">Offline Neural TTS</span>
+            <h2>5 Local Neural Voice Packs &mdash; Shared Seamlessly with TownCrier</h2>
+            <p>
+              Hearsay shares its local neural model directory and translation/pronoun caches with <a href="https://mrpoundsign.com/TownCrier/">TownCrier</a>, so if you have both installed, voice models are downloaded only once:
+            </p>
+            <ul>
+              <li><strong>Supertonic-66M INT8 (Default):</strong> Ultra-fast 44.1 kHz flow-matching voices with minimal CPU and RAM usage.</li>
+              <li><strong>Kokoro-82M Neural &amp; International (53 Voices):</strong> Studio-grade natural prosody across US/UK English, Spanish, French, Hindi, Italian, Japanese, Portuguese, and Mandarin (supports DirectML GPU acceleration and multi-threaded CPU).</li>
+              <li><strong>Kitten v0.8 Mini &amp; Nano + Piper LibriTTS:</strong> Lightweight distilled models and 904-speaker VITS voice packs for maximum variety in crowded chat rooms.</li>
+            </ul>
+          </section>
+
+          <!-- Legal & Privacy -->
+          <section id="compliance" class="card">
+            <span class="badge">Compliance</span>
+            <h2>Legal, Licensing &amp; Privacy</h2>
+            <p>
+              Hearsay is free, open-source software licensed under the <a href="https://github.com/mrpoundsign/Hearsay/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU Affero General Public License v3.0 (AGPL-3.0)</a>.
+            </p>
+            <p>
+              We operate zero backend servers, telemetry, or user databases, and Hearsay requires zero account logins. For full details regarding local operation and optional third-party connections:
+            </p>
+            <div class="btn-group">
+              <a class="btn btn-secondary" href="privacy.html">Privacy Policy</a>
+              <a class="btn btn-secondary" href="terms.html">Terms of Service</a>
+              <a class="btn btn-secondary" href="https://github.com/mrpoundsign/Hearsay/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0 License</a>
+            </div>
+          </section>
+        </main>
+
+        <footer>
+          <div>&copy; Hearsay Open Source Project. Licensed under GNU AGPLv3.</div>
+          <nav aria-label="Footer">
+            <a href="index.html">Home</a>
+            <a href="privacy.html">Privacy Policy</a>
+            <a href="terms.html">Terms of Service</a>
+            <a href="https://mrpoundsign.com/TownCrier/">TownCrier</a>
+            <a href="https://mrpoundsign.com/">mrpoundsign.com</a>
+            <a href="https://github.com/mrpoundsign/Hearsay/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a>
+          </nav>
+        </footer>
+      </div>
+    </div>
+  </div>
+  <script src="site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy | Hearsay</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <img src="icon.png" alt="Hearsay Logo" width="56" height="56" fetchpriority="high">
+        <div>
+          <div class="brand-title">Hearsay</div>
+          <div class="brand-subtitle">Multi-Stream Live Chat Reader &amp; Spatial Audio Mixer for Viewers</div>
+        </div>
+      </a>
+      <div class="header-actions">
+        <a class="btn" href="https://github.com/mrpoundsign/Hearsay/releases/latest" target="_blank" rel="noopener noreferrer">Download Latest Release</a>
+        <a class="btn btn-secondary" href="https://github.com/mrpoundsign/Hearsay" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="sidebar">
+        <nav aria-label="Documentation">
+          <div class="sidebar-group">
+            <div class="sidebar-heading">Documentation</div>
+            <ul class="sidebar-nav" role="list">
+              <li><a class="sidebar-link" href="index.html">Overview &amp; Home</a></li>
+            </ul>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-heading">Legal &amp; Policies</div>
+            <ul class="sidebar-nav" role="list">
+              <li>
+                <a class="sidebar-link" href="privacy.html" aria-current="page">Privacy Policy</a>
+                <ul class="sidebar-subnav" role="list">
+                  <li><a class="sidebar-sublink" href="#local-only">1. Local-Only &amp; Zero-Login</a></li>
+                  <li><a class="sidebar-sublink" href="#streaming-platforms">2. Public Stream Connections</a></li>
+                  <li><a class="sidebar-sublink" href="#pronouns-translation">3. Pronouns &amp; Translation</a></li>
+                  <li><a class="sidebar-sublink" href="#models-updates">4. Models &amp; Updates</a></li>
+                  <li><a class="sidebar-sublink" href="#contact">5. Contact Us</a></li>
+                </ul>
+              </li>
+              <li><a class="sidebar-link" href="terms.html">Terms of Service</a></li>
+            </ul>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-heading">Project &amp; Ecosystem</div>
+            <ul class="sidebar-nav" role="list">
+              <li><a class="sidebar-link" href="https://github.com/mrpoundsign/Hearsay" target="_blank" rel="noopener noreferrer">GitHub Repository &#8599;</a></li>
+              <li><a class="sidebar-link" href="https://github.com/mrpoundsign/Hearsay/releases" target="_blank" rel="noopener noreferrer">Releases &amp; Installer &#8599;</a></li>
+              <li><a class="sidebar-link" href="https://mrpoundsign.com/TownCrier/" target="_blank" rel="noopener noreferrer">TownCrier (For Streamers) &#8599;</a></li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <div class="content-column">
+        <main>
+          <div class="page-title-banner">
+            <h1>Privacy Policy</h1>
+            <p>Effective Date: November 9, 2026 &bull; Last Updated: November 9, 2026</p>
+          </div>
+
+          <div class="card">
+            <p>
+              This Privacy Policy explains how <strong>Hearsay</strong> ("we", "us", or "our"), an open-source desktop software application developed by mrpoundsign and community contributors, handles data on your computer.
+            </p>
+          </div>
+
+          <section id="local-only" class="card">
+            <h2>1. 100% Local-Only &amp; Zero-Login Architecture</h2>
+            <div class="callout">
+              <p><strong>Hearsay does not operate any centralized servers, cloud databases, user accounts, tracking, or telemetry services.</strong></p>
+            </div>
+            <p>
+              Hearsay is a standalone desktop application for Windows, macOS, and Linux. It requires <strong>zero account logins and zero OAuth credentials</strong>. All neural text-to-speech synthesis (TTS), stereo audio mixing, crowd filtering, and configuration storage execute locally on your personal computer.
+            </p>
+            <p>
+              We do not collect, log, transmit, or sell your personal data, chat history, listening habits, or usage analytics.
+            </p>
+          </section>
+
+          <section id="streaming-platforms" class="card">
+            <h2>2. Direct Public Stream Connections</h2>
+            <p>
+              When you tune into a public channel on Twitch, YouTube Live, Kick, or TikTok Live, your computer connects directly to that platform's public read-only chat endpoints to receive live chat messages and public channel avatar images. For TikTok Live rooms, the open-source TikTok connector requests a public room WebCast signature from EulerStream using only the target channel's public room ID. No viewer login credentials are used or transmitted.
+            </p>
+          </section>
+
+          <section id="pronouns-translation" class="card">
+            <h2>3. Optional Pronoun Lookups &amp; Foreign Chat Translation</h2>
+            <ul>
+              <li><strong>Twitch Pronouns Lookup (Alejo.io):</strong> When Smart Gender Voice Matching is enabled, Hearsay queries the public read-only <code>api.pronouns.alejo.io</code> endpoint using public Twitch usernames to match chatters with appropriate voices, caching results locally on your disk.</li>
+              <li><strong>Optional Foreign Chat Translation:</strong> Disabled by default. When enabled in Settings, foreign-language chat sentences are sent directly from your computer to your selected translation provider (such as MyMemory, Google Cloud Translation, DeepL, LibreTranslate, or a local Ollama LLM).</li>
+            </ul>
+          </section>
+
+          <section id="models-updates" class="card">
+            <h2>4. Voice Model Downloads &amp; Releases</h2>
+            <p>
+              When you download neural voice model packs or software releases, Hearsay connects directly to GitHub Releases (<code>github.com/k2-fsa/sherpa-onnx</code> and <code>github.com/mrpoundsign/Hearsay</code>) and verifies archive integrity using SHA-256 digests.
+            </p>
+          </section>
+
+          <section id="contact" class="card">
+            <h2>5. Contact Us</h2>
+            <p>
+              If you have questions about this Privacy Policy, please open an issue on GitHub:
+              <a href="https://github.com/mrpoundsign/Hearsay/issues" target="_blank" rel="noopener noreferrer">https://github.com/mrpoundsign/Hearsay/issues</a>
+            </p>
+          </section>
+        </main>
+
+        <footer>
+          <div>&copy; Hearsay Open Source Project. Licensed under GNU AGPLv3.</div>
+          <nav aria-label="Footer">
+            <a href="index.html">Home</a>
+            <a href="privacy.html">Privacy Policy</a>
+            <a href="terms.html">Terms of Service</a>
+            <a href="https://mrpoundsign.com/">mrpoundsign.com</a>
+          </nav>
+        </footer>
+      </div>
+    </div>
+  </div>
+  <script src="site.js" defer></script>
+</body>
+</html>

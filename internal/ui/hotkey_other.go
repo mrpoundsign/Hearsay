@@ -1,0 +1,26 @@
+//go:build !windows
+
+package ui
+
+// GlobalHotkeyManager is a no-op stub on non-Windows platforms.
+type GlobalHotkeyManager struct {
+	hotkeyID  uintptr
+	onTrigger func()
+}
+
+// NewGlobalHotkeyManagerWithID creates a new global hotkey manager stub with a specific ID.
+func NewGlobalHotkeyManagerWithID(id uintptr, onTrigger func()) *GlobalHotkeyManager {
+	return &GlobalHotkeyManager{
+		hotkeyID:  id,
+		onTrigger: onTrigger,
+	}
+}
+
+// Register validates the hotkey string on non-Windows platforms.
+func (m *GlobalHotkeyManager) Register(hotkeyStr string) error {
+	_, err := ParseHotkey(hotkeyStr)
+	return err
+}
+
+// Close is a no-op on non-Windows platforms.
+func (m *GlobalHotkeyManager) Close() {}

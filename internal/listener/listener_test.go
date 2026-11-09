@@ -1,0 +1,341 @@
+package listener
+
+import (
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/mrpoundsign/Hearsay/internal/config"
+	"github.com/mrpoundsign/TownCrier/pkg/audio"
+	"github.com/mrpoundsign/TownCrier/pkg/chat"
+)
+
+func TestParseTargetInput(t *testing.T) {
+	cases := []struct {
+		raw      string
+		fallback string
+		wantPlat string
+		wantChan string
+	}{
+		{"https://www.twitch.tv/piratesoftware", "twitch", "twitch", "piratesoftware"},
+		{"twitch.tv/cohhcarnage/chat", "youtube", "twitch", "cohhcarnage"},
+		{"https://www.youtube.com/watch?v=dQw4w9WgXcQ", "twitch", "youtube", "dQw4w9WgXcQ"},
+		{"https://youtu.be/abc123XYZ", "twitch", "youtube", "abc123XYZ"},
+		{"https://www.youtube.com/@PirateSoftware/live", "twitch", "youtube", "@PirateSoftware"},
+		{"https://kick.com/xqc", "twitch", "kick", "xqc"},
+		{"https://www.tiktok.com/@creator_handle/live", "twitch", "tiktok", "creator_handle"},
+		{"yt:@SomeCreator", "twitch", "youtube", "@SomeCreator"},
+		{"kick:somekickstreamer", "twitch", "kick", "somekickstreamer"},
+		{"tiktok:@ttstreamer", "twitch", "tiktok", "ttstreamer"},
+		{"barechannel", "twitch", "twitch", "barechannel"},
+	}
+
+	for _, tc := range cases {
+		plat, ch, err := ParseTargetInput(tc.raw, tc.fallback)
+		if err != nil {
+			t.Fatalf("ParseTargetInput(%q) unexpected error: %v", tc.raw, err)
+		}
+		if plat != tc.wantPlat || ch != tc.wantChan {
+			t.Errorf("ParseTargetInput(%q) = (%q, %q), want (%q, %q)", tc.raw, plat, ch, tc.wantPlat, tc.wantChan)
+		}
+	}
+}
+
+func TestCrowdControllerFilteringAndPriorityBypass(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Identity.MyUsernames = []string{"BlindViewer"}
+	cfg.Identity.PriorityChatters = []string{"BestFriend"}
+	cfg.Identity.IgnoredChatters = []string{"ToxicUser"}
+	cfg.Crowd.ChatterCooldownSec = 10
+	cfg.Crowd.SkipShortSpam = true
+
+	slot := config.StreamSlotConfig{
+		Platform:    "twitch",
+		Channel:     "streamer_one",
+		Volume:      1.0,
+		CrowdFilter: config.FilterSubsVIPsMods,
+	}
+
+	cc := NewCrowdController()
+	now := time.Now()
+
+	// 1. Muted chatter is dropped
+	res := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "ToxicUser",
+		Roles:    []string{"subscriber"},
+		Text:     "Hello everyone in chat!",
+	}, "Hello everyone in chat!", slot, cfg, now)
+	if res.Allow || res.Reason != "muted_chatter" {
+		t.Fatalf("expected muted_chatter rejection, got %+v", res)
+	}
+
+	// 2. Non-sub normal viewer is rejected by FilterSubsVIPsMods
+	res = cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "RandomViewer",
+		Text:     "This is a full sentence from a non-sub",
+	}, "This is a full sentence from a non-sub", slot, cfg, now)
+	if res.Allow || res.Reason != "role_filter_subs_vips_mods" {
+		t.Fatalf("expected role_filter_subs_vips_mods rejection, got %+v", res)
+	}
+
+	// 3. Mention of MyUsernames by a non-sub BYPASSES role filter and marks IsMention=true
+	res = cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "RandomViewer",
+		Text:     "Hey @BlindViewer what do you think of this boss fight?",
+	}, "Hey @BlindViewer what do you think of this boss fight?", slot, cfg, now)
+	if !res.Allow || !res.IsMention || !res.IsPriority {
+		t.Fatalf("expected @mention priority bypass, got %+v", res)
+	}
+
+	// 4. Priority friend bypasses role filter
+	res = cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "BestFriend",
+		Text:     "LUL", // Even short message from priority friend bypasses spam filter
+	}, "LUL", slot, cfg, now)
+	if !res.Allow || !res.IsPriority {
+		t.Fatalf("expected priority friend bypass, got %+v", res)
+	}
+
+	// 5. Subscriber sending hype spam "LUL LUL" is dropped by SkipShortSpam
+	res = cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "SubChatter",
+		Roles:    []string{"subscriber"},
+		Text:     "LUL LUL",
+	}, "LUL LUL", slot, cfg, now)
+	if res.Allow || res.Reason != "short_hype_spam" {
+		t.Fatalf("expected short_hype_spam rejection, got %+v", res)
+	}
+
+	// 6. Subscriber sending real sentence is allowed once, then rate-limited by ChatterCooldownSec
+	res = cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "SubChatter",
+		Roles:    []string{"subscriber"},
+		Text:     "That dodge timing was incredible!",
+	}, "That dodge timing was incredible!", slot, cfg, now)
+	if !res.Allow {
+		t.Fatalf("expected subscriber message to be allowed, got %+v", res)
+	}
+
+	res2 := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "SubChatter",
+		Roles:    []string{"subscriber"},
+		Text:     "Here is a second message two seconds later",
+	}, "Here is a second message two seconds later", slot, cfg, now.Add(2*time.Second))
+	if res2.Allow || res2.Reason != "chatter_cooldown" {
+		t.Fatalf("expected chatter_cooldown rejection, got %+v", res2)
+	}
+
+	// 7. Follow event (no text) is muted by default
+	resFollow := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindFollow,
+		UserName: "NewFollower",
+	}, "", slot, cfg, now.Add(20*time.Second))
+	if resFollow.Allow || resFollow.Reason != "no_text_event" {
+		t.Fatalf("expected no_text_event rejection for follow, got %+v", resFollow)
+	}
+}
+
+func TestSelectChatterVoiceAndSmartChannelSwitch(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Audio.HashChatterVoices = true
+	cfg.Audio.SpeakChannelOnSwitch = true
+	cfg.Audio.SpeakNames = true
+	cfg.Identity.ChatterVoices["specialuser"] = "supertonic:m5"
+
+	slotA := config.StreamSlotConfig{
+		Platform:    "twitch",
+		Channel:     "streamer_a",
+		DisplayName: "Streamer A",
+	}
+	slotB := config.StreamSlotConfig{
+		Platform:    "twitch",
+		Channel:     "streamer_b",
+		DisplayName: "Streamer B",
+	}
+
+	ev1 := chat.Event{Platform: "twitch", UserName: "Alice", Text: "Hello there"}
+	v1 := SelectChatterVoice(ev1, slotA, cfg, DefaultSupertonicVoicePool)
+	v2 := SelectChatterVoice(ev1, slotA, cfg, DefaultSupertonicVoicePool)
+	if v1 == "" || v1 != v2 {
+		t.Fatalf("expected deterministic voice hash for Alice, got %q and %q", v1, v2)
+	}
+
+	evOverride := chat.Event{Platform: "twitch", UserName: "SpecialUser", Text: "Custom voice"}
+	if got := SelectChatterVoice(evOverride, slotA, cfg, DefaultSupertonicVoicePool); got != "supertonic:m5" {
+		t.Fatalf("expected explicit chatter voice supertonic:m5, got %q", got)
+	}
+
+	// Smart channel-switch prefix when watching 2 streams:
+	spoken1, lastSlot := FormatSpokenText(ev1, "First message", slotA, cfg, 2, "")
+	if !strings.HasPrefix(spoken1, "Streamer A, Alice: First message") {
+		t.Fatalf("expected channel prefix on first message, got %q", spoken1)
+	}
+
+	// Second consecutive message from the SAME channel should NOT repeat "Streamer A, "
+	spoken2, lastSlot := FormatSpokenText(ev1, "Second message", slotA, cfg, 2, lastSlot)
+	if strings.HasPrefix(spoken2, "Streamer A,") || spoken2 != "Alice: Second message" {
+		t.Fatalf("expected no channel prefix on consecutive message from same channel, got %q", spoken2)
+	}
+
+	// Message from Streamer B SHOULD announce "Streamer B, "
+	spoken3, _ := FormatSpokenText(ev1, "Over on B", slotB, cfg, 2, lastSlot)
+	if !strings.HasPrefix(spoken3, "Streamer B, Alice: Over on B") {
+		t.Fatalf("expected channel prefix when switching to Streamer B, got %q", spoken3)
+	}
+}
+
+type mockConnector struct {
+	startedTarget string
+	stopped       bool
+	onStatus      func(status string, detail string)
+}
+
+func (m *mockConnector) Start(target string) error {
+	m.startedTarget = target
+	if m.onStatus != nil {
+		m.onStatus("connected", "Live")
+	}
+	return nil
+}
+
+func (m *mockConnector) Stop() error {
+	m.stopped = true
+	return nil
+}
+
+type mockPlayer struct {
+	mu      sync.Mutex
+	plays   []audio.PlayOptions
+	aborted bool
+}
+
+func (p *mockPlayer) Play(samples []float32, sampleRate int) error {
+	return p.PlayWithOptions(samples, sampleRate, audio.PlayOptions{Gain: 1.0, Pan: 0.0})
+}
+
+func (p *mockPlayer) PlayWithOptions(_ []float32, _ int, opts audio.PlayOptions) error {
+	p.mu.Lock()
+	p.plays = append(p.plays, opts)
+	p.mu.Unlock()
+	return nil
+}
+
+func (p *mockPlayer) Abort() {
+	p.mu.Lock()
+	p.aborted = true
+	p.mu.Unlock()
+}
+
+func (p *mockPlayer) Stop()                                   { p.Abort() }
+func (p *mockPlayer) PanicStop()                              { p.Abort() }
+func (p *mockPlayer) ResetPanic()                             {}
+func (p *mockPlayer) SwitchDevice(_ string) error             { return nil }
+func (p *mockPlayer) SetVolume(_ float32)                     {}
+func (p *mockPlayer) Volume() float32                         { return 1.0 }
+func (p *mockPlayer) IsPlaying() bool                         { return false }
+func (p *mockPlayer) Close() error                            { return nil }
+func (p *mockPlayer) SetFallbackListener(_ func(reason string)) {}
+
+type mockTTSEngine struct{}
+
+func (e *mockTTSEngine) Synthesize(_ string, _ string, _ float32) ([]float32, int, error) {
+	return []float32{0.1, -0.1, 0.2, -0.2}, 24000, nil
+}
+func (e *mockTTSEngine) Voices() []string { return DefaultSupertonicVoicePool }
+func (e *mockTTSEngine) NumSpeakers() int { return len(DefaultSupertonicVoicePool) }
+func (e *mockTTSEngine) Close() error     { return nil }
+
+func TestMultiStreamSessionEndToEnd(t *testing.T) {
+	store := config.NewMemoryStore()
+	cfg, _ := store.Load()
+	cfg.Identity.MyUsernames = []string{"ViewerHero"}
+
+	sess := NewSession(cfg, store)
+	defer func() { _ = sess.Close() }()
+
+	sess.SetConnectorFactory(func(_ string, _ func(ev *chat.Event), onStatus func(status string, detail string)) (SlotConnector, error) {
+		return &mockConnector{onStatus: onStatus}, nil
+	})
+
+	player := &mockPlayer{}
+	sess.SetPlayer(player)
+	sess.SetEngine(&mockTTSEngine{})
+
+	// Add 2 simultaneous Twitch co-streams panned Left (-0.8) and Right (+0.8)
+	if err := sess.AddSlot(config.StreamSlotConfig{
+		Platform:    "twitch",
+		Channel:     "costreamer_left",
+		DisplayName: "LeftStream",
+		Volume:      0.9,
+		Pan:         -0.8,
+	}); err != nil {
+		t.Fatalf("AddSlot left failed: %v", err)
+	}
+	if err := sess.AddSlot(config.StreamSlotConfig{
+		Platform:    "twitch",
+		Channel:     "costreamer_right",
+		DisplayName: "RightStream",
+		Volume:      1.1,
+		Pan:         0.8,
+	}); err != nil {
+		t.Fatalf("AddSlot right failed: %v", err)
+	}
+
+	// Send a message on LeftStream and a @mention on RightStream
+	sess.HandleInboundEvent("twitch:costreamer_left", &chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "ChatterOne",
+		Text:     "Great teamwork on the left flank!",
+	})
+	sess.HandleInboundEvent("twitch:costreamer_right", &chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "ChatterTwo",
+		Text:     "Hey @ViewerHero watch out on the right!",
+	})
+
+	// Wait for speech worker to finish speaking both entries
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		logs := sess.LogSnapshot()
+		if len(logs) >= 2 && logs[0].Status == StatusSpoken && logs[1].Status == StatusSpoken {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	logs := sess.LogSnapshot()
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 log entries, got %d", len(logs))
+	}
+	if logs[0].Status != StatusSpoken || logs[1].Status != StatusSpoken {
+		t.Fatalf("expected both entries spoken, got %s and %s", logs[0].Status, logs[1].Status)
+	}
+	if !logs[1].IsMention {
+		t.Fatalf("expected second entry to be marked IsMention=true")
+	}
+
+	player.mu.Lock()
+	playCount := len(player.plays)
+	player.mu.Unlock()
+	if playCount < 3 {
+		// At least: Left TTS + Right Mention Earcon + Right TTS
+		t.Fatalf("expected at least 3 PlayWithOptions calls (including mention earcon), got %d", playCount)
+	}
+
+	// Save active slots as a Lineup and verify persistence
+	lineup, err := sess.SaveCurrentAsLineup("Co-Stream Setup")
+	if err != nil {
+		t.Fatalf("SaveCurrentAsLineup failed: %v", err)
+	}
+	if len(lineup.Slots) != 2 {
+		t.Fatalf("expected 2 slots in saved lineup, got %d", len(lineup.Slots))
+	}
+}

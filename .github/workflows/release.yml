@@ -1,0 +1,169 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.0.1)'
+        required: false
+        default: '0.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    name: Determine Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Compute Version & Tag
+        id: meta
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RAW_VER="${GITHUB_REF#refs/tags/v}"
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            RAW_VER="${{ github.event.inputs.version || '0.0.1' }}"
+            RAW_VER="${RAW_VER#v}"
+            TAG_NAME="v${RAW_VER}"
+          fi
+          echo "version=${RAW_VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+  build-linux-windows:
+    name: Build & Package Desktop GUI (Windows & Linux)
+    needs: meta
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: false
+
+      - name: Cache Go Modules, Build Artifacts & golangci-lint-v2
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/bin/golangci-lint-v2
+          key: ${{ runner.os }}-go-1.27-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.27-
+          save-always: true
+
+      - name: Install Cross-Compilation & Packaging Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 zip \
+            libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libxi-dev libxxf86vm-dev libasound2-dev \
+            libwayland-dev libxkbcommon-dev
+
+      - name: Download Go Modules
+        run: |
+          go mod download
+          go mod download github.com/k2-fsa/sherpa-onnx-go-windows
+          go mod download github.com/k2-fsa/sherpa-onnx-go-linux
+
+      - name: Install golangci-lint-v2 (Cached)
+        run: |
+          if [ ! -x "$HOME/go/bin/golangci-lint-v2" ]; then
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$HOME/go/bin" v2.14.0
+            mv -f "$HOME/go/bin/golangci-lint" "$HOME/go/bin/golangci-lint-v2"
+          fi
+
+      - name: Run Quality Gate (go fix --diff, golangci-lint-v2, go test)
+        run: |
+          chmod +x ./build.sh
+          ./build.sh lint
+          ./build.sh test
+
+      - name: Build & Package Windows and Linux Distributions
+        run: |
+          chmod +x ./build.sh
+          ./build.sh all
+
+      - name: Upload Windows & Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux-windows
+          path: dist/
+
+  build-macos:
+    name: Build & Package Desktop GUI (macOS)
+    needs: meta
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Download Go Modules
+        run: |
+          go mod download
+          go mod download github.com/k2-fsa/sherpa-onnx-go-macos
+
+      - name: Build & Package macOS Distribution
+        run: |
+          chmod +x ./build.sh
+          ./build.sh mac
+          ./build.sh package-mac
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: dist/
+
+  release:
+    name: Consolidate Artifacts & Publish Release
+    needs: [meta, build-linux-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: Update and Consolidate Checksums
+        run: |
+          cd dist
+          rm -f checksums.txt SHA256SUMS.txt
+          sha256sum * >> checksums.txt
+          sort -k2 -o checksums.txt checksums.txt
+          cp -f checksums.txt SHA256SUMS.txt
+          echo "=== Final Consolidated Checksums ==="
+          cat checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: Hearsay ${{ needs.meta.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/*

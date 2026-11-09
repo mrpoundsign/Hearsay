@@ -1,0 +1,21 @@
+# Binaries and build outputs
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.syso
+*.log
+*.out
+*.prof
+
+# Staged payloads (keep placeholder.txt)
+cmd/launcher/payload/*
+!cmd/launcher/payload/placeholder.txt
+cmd/installer/payload/*
+!cmd/installer/payload/placeholder.txt
+
+# Local planning repo
+planning/
+models/

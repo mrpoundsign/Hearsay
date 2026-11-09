@@ -47,6 +47,7 @@ type LogEntry struct {
 	Platform   string
 	Channel    string
 	UserName   string
+	UserColor  string
 	Text       string
 	SpokenText string
 	VoiceID    string
@@ -54,6 +55,7 @@ type LogEntry struct {
 	Volume     float64
 	Status     LogStatus
 	SkipReason string
+	Coalesced  bool
 	IsMention  bool
 	IsPriority bool
 	Timestamp  time.Time
@@ -117,6 +119,8 @@ type Session struct {
 	slots            map[string]*activeSlot
 	slotOrder        []string
 	lastSpokenSlotID string
+	lastSpeakerKey   string
+	lastSpokenAt     time.Time
 
 	logEntries    []LogEntry
 	nextEntryID   atomic.Uint64
@@ -615,6 +619,8 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 	cfgSnap := s.cfg.Clone()
 	activeCount := len(s.slotOrder)
 	lastSlot := s.lastSpokenSlotID
+	lastSpeaker := s.lastSpeakerKey
+	lastAt := s.lastSpokenAt
 	eng := s.engine
 	s.mu.RUnlock()
 
@@ -637,8 +643,8 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 	cleanedText := s.sanitizer.SanitizeWithOptions(ev.Text, chat.SanitizeOptions{
 		EmoteSpans:        ev.EmoteSpans,
 		SpeakEmotes:       cfgSnap.Audio.SpeakEmotes,
-		DeduplicateEmotes: true,
-		MaxDuplicateWords: 3,
+		DeduplicateEmotes: cfgSnap.Audio.DeduplicateEmotes,
+		MaxDuplicateWords: cfgSnap.Audio.MaxDuplicateWords,
 	})
 
 	// 3. Optional Translation
@@ -659,7 +665,8 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 	}
 
 	// 4. Crowd Control evaluation
-	eval := s.crowd.Evaluate(*ev, cleanedText, slotCfg, cfgSnap, time.Now())
+	now := time.Now()
+	eval := s.crowd.Evaluate(*ev, cleanedText, slotCfg, cfgSnap, now)
 
 	var availVoices []string
 	if eng != nil {
@@ -672,6 +679,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 	if speaker == "" {
 		speaker = "chat"
 	}
+	userColor := ResolveChatterColorHex(slotCfg.Platform, speaker, ExtractUserColor(*ev))
 
 	if !eval.Allow {
 		s.appendLogEntry(LogEntry{
@@ -680,6 +688,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 			Platform:   slotCfg.Platform,
 			Channel:    slotCfg.EffectiveLabel(),
 			UserName:   speaker,
+			UserColor:  userColor,
 			Text:       ev.Text,
 			SpokenText: cleanedText,
 			VoiceID:    voiceID,
@@ -694,9 +703,11 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		return
 	}
 
-	spokenText, nextLastSlot := FormatSpokenText(*ev, cleanedText, slotCfg, cfgSnap, activeCount, lastSlot)
+	spokenText, nextLastSlot, nextSpeakerKey, coalesced := FormatSpokenTextWithCoalesce(*ev, cleanedText, slotCfg, cfgSnap, activeCount, lastSlot, lastSpeaker, lastAt, now)
 	s.mu.Lock()
 	s.lastSpokenSlotID = nextLastSlot
+	s.lastSpeakerKey = nextSpeakerKey
+	s.lastSpokenAt = now
 	s.mu.Unlock()
 
 	entry := LogEntry{
@@ -705,12 +716,14 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		Platform:   slotCfg.Platform,
 		Channel:    slotCfg.EffectiveLabel(),
 		UserName:   speaker,
+		UserColor:  userColor,
 		Text:       ev.Text,
 		SpokenText: spokenText,
 		VoiceID:    voiceID,
 		Pan:        slotCfg.Pan,
 		Volume:     slotCfg.Volume,
 		Status:     StatusQueued,
+		Coalesced:  coalesced,
 		IsMention:  eval.IsMention,
 		IsPriority: eval.IsPriority,
 		Timestamp:  ev.Timestamp,
@@ -933,9 +946,11 @@ func (s *Session) ClearQueue() {
 
 // PanicMute immediately halts audio output (<50ms) and flushes the speech queue.
 func (s *Session) PanicMute() {
-	s.mu.RLock()
+	s.mu.Lock()
 	p := s.player
-	s.mu.RUnlock()
+	s.lastSpeakerKey = ""
+	s.lastSpokenAt = time.Time{}
+	s.mu.Unlock()
 	if p != nil {
 		p.PanicStop()
 		p.ResetPanic()
@@ -1048,6 +1063,94 @@ func (s *Session) AssignChatterVoice(username, voiceID string) {
 			cfg.Identity.ChatterVoices[clean] = strings.TrimSpace(voiceID)
 		}
 	})
+}
+
+// PreviewVoice synthesizes and plays a short sample phrase using the specified voiceID.
+func (s *Session) PreviewVoice(voiceID string, sampleText string) {
+	s.mu.RLock()
+	eng := s.engine
+	p := s.player
+	speed := s.cfg.Audio.DefaultSpeed
+	defVoice := s.cfg.Audio.DefaultVoice
+	s.mu.RUnlock()
+
+	if eng == nil || p == nil {
+		return
+	}
+	vid := strings.TrimSpace(voiceID)
+	if vid == "" {
+		vid = defVoice
+	}
+	if strings.TrimSpace(sampleText) == "" {
+		sampleText = "Hello from Hearsay! Ready to read live chat aloud."
+	}
+	if speed <= 0 {
+		speed = 1.0
+	}
+	go func() {
+		samples, sr, err := eng.Synthesize(sampleText, vid, float32(speed))
+		if err == nil && len(samples) > 0 {
+			_ = p.PlayWithOptions(samples, sr, audio.PlayOptions{Gain: 1.0, Pan: 0})
+		}
+	}()
+}
+
+// ReloadEngine ensures all enabled TTS model families in Config are downloaded to modelDir
+// and initializes a new MultiEngine, replacing the active TTS engine.
+func (s *Session) ReloadEngine(modelDir string, onProgress func(modelName string, pct float64)) error {
+	if strings.TrimSpace(modelDir) == "" {
+		modelDir = tts.DefaultModelDir()
+	}
+	cfg := s.ConfigSnapshot()
+	enabledModels := cfg.Audio.EffectiveEnabledModels()
+
+	for _, fam := range enabledModels {
+		if fam == tts.ModelKokoro || fam == tts.ModelKokoroIntl {
+			if !tts.IsKokoroInstalledForMode(modelDir, cfg.Audio.UseGPU) {
+				if err := tts.DownloadKokoroModelForMode(modelDir, cfg.Audio.UseGPU, func(cur, total int64) {
+					if onProgress != nil && total > 0 {
+						onProgress("Kokoro-82M", float64(cur)/float64(total))
+					}
+				}); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if !tts.IsModelFamilyInstalled(modelDir, fam, cfg.Audio.UseGPU) {
+			spec, _ := tts.ModelSpecByID(fam)
+			name := spec.ShortName
+			if name == "" {
+				name = fam
+			}
+			if err := tts.DownloadModelFamily(modelDir, fam, cfg.Audio.UseGPU, func(cur, total int64) {
+				if onProgress != nil && total > 0 {
+					onProgress(name, float64(cur)/float64(total))
+				}
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	threads := cfg.Audio.NumThreads
+	if threads <= 0 {
+		threads = 4
+	}
+	newEng, err := tts.NewMultiEngine(modelDir, enabledModels, threads, cfg.Audio.UseGPU, tts.DefaultMaxClauseWords, 0)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	oldEng := s.engine
+	s.engine = newEng
+	s.mu.Unlock()
+
+	if oldEng != nil {
+		_ = oldEng.Close()
+	}
+	return nil
 }
 
 func (s *Session) notifyLogUpdated() {

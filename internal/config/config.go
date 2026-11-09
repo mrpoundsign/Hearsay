@@ -44,7 +44,10 @@ type AudioConfig struct {
 	HashChatterVoices    bool     `json:"hash_chatter_voices"`
 	SpeakChannelOnSwitch bool     `json:"speak_channel_on_switch"`
 	SpeakNames           bool     `json:"speak_names"`
+	CoalesceSeconds      int      `json:"coalesce_seconds"`
 	SpeakEmotes          bool     `json:"speak_emotes"`
+	DeduplicateEmotes    bool     `json:"deduplicate_emotes"`
+	MaxDuplicateWords    int      `json:"max_duplicate_words"`
 	EarconsEnabled       bool     `json:"earcons_enabled"`
 }
 
@@ -75,10 +78,11 @@ type CrowdConfig struct {
 
 // AccessibilityConfig configures UI scaling, high-contrast mode, mini player, and global hotkeys.
 type AccessibilityConfig struct {
-	FontScale       float32      `json:"font_scale"`
-	HighContrast    bool         `json:"high_contrast"`
-	AlwaysOnTopMini bool         `json:"always_on_top_mini"`
-	Hotkeys         HotkeyConfig `json:"hotkeys"`
+	FontScale        float32      `json:"font_scale"`
+	HighContrast     bool         `json:"high_contrast"`
+	ShowChannelIcons bool         `json:"show_channel_icons"`
+	AlwaysOnTopMini  bool         `json:"always_on_top_mini"`
+	Hotkeys          HotkeyConfig `json:"hotkeys"`
 }
 
 // HotkeyConfig defines the global keyboard shortcuts for Hearsay.
@@ -156,7 +160,10 @@ func DefaultConfig() *Config {
 			HashChatterVoices:    true,
 			SpeakChannelOnSwitch: true,
 			SpeakNames:           true,
+			CoalesceSeconds:      30,
 			SpeakEmotes:          false,
+			DeduplicateEmotes:    true,
+			MaxDuplicateWords:    2,
 			EarconsEnabled:       true,
 		},
 		Identity: IdentityConfig{
@@ -211,6 +218,12 @@ func (c *Config) Normalize() {
 	}
 	if c.Audio.NumThreads <= 0 {
 		c.Audio.NumThreads = 4
+	}
+	if c.Audio.CoalesceSeconds < 0 {
+		c.Audio.CoalesceSeconds = 0
+	}
+	if c.Audio.MaxDuplicateWords < 0 {
+		c.Audio.MaxDuplicateWords = 0
 	}
 	if c.Identity.ChatterVoices == nil {
 		c.Identity.ChatterVoices = make(map[string]string)

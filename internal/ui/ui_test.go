@@ -53,6 +53,26 @@ func TestMainWindowQuickTuneMiniPlayerAndTheme(t *testing.T) {
 		t.Fatalf("expected 1 tuned slot for mocomade, got %+v", slots)
 	}
 
+	// Verify Platform Selector + Channel Name without platform:channel syntax
+	mw.PlatformSelect.SetSelected("YouTube")
+	mw.QuickTuneEntry.SetText("@MoCoMade")
+	fynetest.Tap(mw.TuneInBtn)
+
+	slots = sess.SlotsSnapshot()
+	if len(slots) != 2 || slots[1].Config.Platform != "youtube" || slots[1].Config.Channel != "@MoCoMade" {
+		t.Fatalf("expected 2nd tuned slot for youtube/@MoCoMade, got %+v", slots)
+	}
+
+	// Verify Channel Avatar Icon generation and toggle
+	res := ChannelAvatarResource("twitch", "mocomade", nil)
+	if res == nil || len(res.Content()) == 0 {
+		t.Fatalf("expected non-empty circular monogram PNG resource")
+	}
+	mw.channelIconsCk.SetChecked(true)
+	if !sess.ConfigSnapshot().Accessibility.ShowChannelIcons {
+		t.Fatalf("expected ShowChannelIcons=true after checking Channel Icons toggle")
+	}
+
 	// Verify 1-Click Mini Player toggle
 	if mw.IsMiniMode() {
 		t.Fatalf("expected initial IsMiniMode() == false")

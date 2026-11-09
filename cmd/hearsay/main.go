@@ -218,7 +218,7 @@ func run() error {
 
 			fyne.Do(func() {
 				defer logging.RecoverAndExit("ui-init")
-				mainWindow := ui.NewMainWindow(myApp, session)
+				mainWindow := ui.NewMainWindow(myApp, session, audio.EnumeratePlaybackDevices)
 				mainWindow.Window.SetMaster()
 				mainWindow.Window.Show()
 				launchWin.Close()

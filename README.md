@@ -1,14 +1,14 @@
-# Hearsay — Multi-Stream Accessibility Chat Reader
+# Hearsay — Multi-Stream Live Chat Reader & Audio Mixer
 
-**Hearsay** is an open-source, zero-login Windows & Linux desktop application that lets viewers **listen to live stream chats** across **Twitch**, **YouTube**, **Kick**, and **TikTok** using free, local neural Text-to-Speech (TTS).
+**Hearsay** is an open-source, zero-login desktop application (Windows, macOS, and Linux) that lets anyone **listen to live stream chats** across **Twitch**, **YouTube**, **Kick**, and **TikTok** using free, local neural Text-to-Speech (TTS).
 
-Built on the [`TownCrier/pkg`](https://github.com/mrpoundsign/TownCrier) neural TTS and platform connector SDK, Hearsay is designed from the ground up for **stream viewers**, **blind & low-vision accessibility**, and **multi-stream co-watch sessions**.
+Built on the [`TownCrier/pkg`](https://github.com/mrpoundsign/TownCrier) neural TTS and platform connector SDK, Hearsay is built for **hands-free stream listening**, **multi-POV co-stream mixing**, **single-monitor gaming**, and **accessibility**.
 
 ---
 
 ## Key Features
 
-- **100% Zero-Login & Read-Only**: Paste any stream URL (`twitch.tv/...`, `youtube.com/watch?v=...`, `kick.com/...`, `tiktok.com/@...`) or `platform:channel` handle and tune in immediately—no OAuth or accounts required.
+- **100% Zero-Login & Read-Only**: Select a platform (**Twitch**, **YouTube**, **Kick**, **TikTok**) and enter a channel name (e.g. `MoCoMade`) or paste any stream URL to tune in immediately—no OAuth or accounts required.
 - **Multi-Stream Audio Mixer & Spatial Stereo Panning**: Listen to multiple streams simultaneously (even multiple channels on the same platform) with independent volume gain and **Left / Center / Right constant-power stereo panning** (`-1.0` to `+1.0`).
 - **Deterministic Multi-Voice Chatter Hashing**: Every chatter automatically receives a consistent neural voice (`FNV-1a` hash across the active voice pool) so back-and-forth conversations sound like distinct people.
 - **Smart Channel-Switch Announcements**: Announces the channel name (`"MoCoMade: ..."`) only when the active speaker switches from one watched stream to another.

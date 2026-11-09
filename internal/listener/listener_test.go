@@ -190,6 +190,33 @@ func TestSelectChatterVoiceAndSmartChannelSwitch(t *testing.T) {
 	if !strings.HasPrefix(spoken3, "Streamer B, Alice: Over on B") {
 		t.Fatalf("expected channel prefix when switching to Streamer B, got %q", spoken3)
 	}
+
+	// Consecutive speaker coalescing within CoalesceSeconds (30s):
+	now := time.Now()
+	cfg.Audio.CoalesceSeconds = 30
+	spFirst, slotAfter1, spkAfter1, coal1 := FormatSpokenTextWithCoalesce(ev1, "Part one", slotA, cfg, 1, "", "", time.Time{}, now)
+	if coal1 || spFirst != "Alice: Part one" {
+		t.Fatalf("expected non-coalesced first message 'Alice: Part one', got %q (coal=%v)", spFirst, coal1)
+	}
+	spSecond, _, _, coal2 := FormatSpokenTextWithCoalesce(ev1, "and part two", slotA, cfg, 1, slotAfter1, spkAfter1, now, now.Add(5*time.Second))
+	if !coal2 || spSecond != "and part two" {
+		t.Fatalf("expected coalesced follow-up 'and part two' without repeating username, got %q (coal=%v)", spSecond, coal2)
+	}
+
+	// User chat color extraction & dark-theme readability clamping
+	kickRaw := map[string]any{
+		"sender": map[string]any{
+			"identity": map[string]any{
+				"color": "#53FC18",
+			},
+		},
+	}
+	if gotCol := ExtractUserColor(chat.Event{Platform: "kick", Raw: kickRaw}); gotCol != "#53FC18" {
+		t.Fatalf("expected extracted Kick color #53FC18, got %q", gotCol)
+	}
+	if clamped := ResolveChatterColorHex("twitch", "Alice", "#000080"); clamped == "#000080" || clamped == "" {
+		t.Fatalf("expected dark navy #000080 to be lightness-clamped for dark theme, got %q", clamped)
+	}
 }
 
 type mockConnector struct {

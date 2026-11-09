@@ -30,7 +30,7 @@ func buildAppSpec() installer.AppSpec {
 	return installer.AppSpec{
 		AppName:       "Hearsay",
 		AppID:         "com.github.mrpoundsign.hearsay",
-		Description:   "Open-source multi-stream accessibility chat reader powered by local neural TTS",
+		Description:   "Open-source multi-stream live chat reader and audio mixer powered by local neural TTS",
 		Publisher:     "mrpoundsign",
 		Version:       AppVersion,
 		RepoOwner:     "mrpoundsign",

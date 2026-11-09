@@ -39,7 +39,7 @@ func NewLaunchWindow(a fyne.App) (*LaunchStateTracker, fyne.Window) {
 	w.CenterOnScreen()
 
 	title := widget.NewLabelWithStyle("Hearsay "+AppVersion, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	sub := widget.NewLabelWithStyle("Multi-Stream Accessibility Chat Reader", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+	sub := widget.NewLabelWithStyle("Multi-Stream Live Chat Reader & Audio Mixer", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
 	dlProg := widget.NewProgressBar()
 	dlProg.Hide()

@@ -10,8 +10,8 @@ import (
 // a floating tooltip popup and status hint when hovered.
 type TooltipButton struct {
 	widget.Button
-	Tooltip  string
-	onHover  func(btn *TooltipButton, text string)
+	Tooltip   string
+	onHover   func(btn *TooltipButton, text string)
 	onUnhover func(btn *TooltipButton)
 }
 
@@ -52,5 +52,60 @@ func (b *TooltipButton) MouseOut() {
 	b.Button.MouseOut()
 	if b.onUnhover != nil {
 		b.onUnhover(b)
+	}
+}
+
+func (mw *MainWindow) newTipBtn(label string, icon fyne.Resource, tooltip string, tapped func()) *TooltipButton {
+	return NewTooltipButton(label, icon, tooltip, mw.showTooltip, mw.hideTooltip, tapped)
+}
+
+func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
+	mw.uiMu.Lock()
+	defer mw.uiMu.Unlock()
+
+	if text == "" || mw.Window == nil {
+		return
+	}
+	if mw.nowSpeakingLbl != nil {
+		mw.nowSpeakingLbl.SetText("Tip: " + text)
+	}
+	if mw.activeTipPop != nil {
+		mw.activeTipPop.Hide()
+		mw.activeTipPop = nil
+	}
+	cnv := mw.Window.Canvas()
+	if cnv == nil || btn == nil {
+		return
+	}
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(btn)
+	if pos.X <= 0 && pos.Y <= 0 {
+		return
+	}
+	lbl := widget.NewLabel(text)
+	pop := widget.NewPopUp(lbl, cnv)
+	popY := pos.Y + btn.Size().Height + 4
+	if popY+pop.MinSize().Height > cnv.Size().Height {
+		popY = max(4, pos.Y-pop.MinSize().Height-4)
+	}
+	popX := min(pos.X, max(4, cnv.Size().Width-pop.MinSize().Width-8))
+	pop.ShowAtPosition(fyne.NewPos(popX, popY))
+	mw.activeTipPop = pop
+	mw.activeTipOwner = btn
+}
+
+func (mw *MainWindow) hideTooltip(btn *TooltipButton) {
+	mw.uiMu.Lock()
+	defer mw.uiMu.Unlock()
+
+	if btn != nil && mw.activeTipOwner != nil && mw.activeTipOwner != btn {
+		return
+	}
+	if mw.activeTipPop != nil {
+		mw.activeTipPop.Hide()
+		mw.activeTipPop = nil
+	}
+	mw.activeTipOwner = nil
+	if mw.nowSpeakingLbl != nil && mw.lastStatusText != "" {
+		mw.nowSpeakingLbl.SetText(mw.lastStatusText)
 	}
 }

@@ -2,22 +2,120 @@ package ui
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/mrpoundsign/Hearsay/internal/config"
 	"github.com/mrpoundsign/TownCrier/pkg/tts"
 )
 
+var coalesceOptions = []string{
+	"Off (Always speak username)",
+	"10 seconds",
+	"15 seconds",
+	"30 seconds (Default)",
+	"60 seconds",
+	"120 seconds",
+}
+
+func coalesceSecToLabel(sec int) string {
+	switch sec {
+	case 0:
+		return "Off (Always speak username)"
+	case 10:
+		return "10 seconds"
+	case 15:
+		return "15 seconds"
+	case 60:
+		return "60 seconds"
+	case 120:
+		return "120 seconds"
+	default:
+		return "30 seconds (Default)"
+	}
+}
+
+func labelToCoalesceSec(lbl string) int {
+	switch lbl {
+	case "Off (Always speak username)":
+		return 0
+	case "10 seconds":
+		return 10
+	case "15 seconds":
+		return 15
+	case "60 seconds":
+		return 60
+	case "120 seconds":
+		return 120
+	default:
+		return 30
+	}
+}
+
+var duplicateWordsOptions = []string{
+	"Unlimited",
+	"1 word",
+	"2 words (Default)",
+	"3 words",
+}
+
+func dupWordsToLabel(maxWords int) string {
+	switch maxWords {
+	case 0:
+		return "Unlimited"
+	case 1:
+		return "1 word"
+	case 3:
+		return "3 words"
+	default:
+		return "2 words (Default)"
+	}
+}
+
+func labelToDupWords(lbl string) int {
+	switch lbl {
+	case "Unlimited":
+		return 0
+	case "1 word":
+		return 1
+	case "3 words":
+		return 3
+	default:
+		return 2
+	}
+}
+
+func availableVoiceOptions(cfg *config.Config, eng tts.Engine) ([]string, map[string]string) {
+	families := cfg.Audio.EffectiveEnabledModels()
+	rawLabels := tts.VoiceDisplayLabelsForModels(families)
+	labels := make([]string, 0, len(rawLabels))
+	labelToID := make(map[string]string, len(rawLabels))
+	for _, lbl := range rawLabels {
+		labels = append(labels, lbl)
+		labelToID[lbl] = tts.VoiceIDFromLabel(lbl)
+	}
+	if len(labels) == 0 && eng != nil {
+		for _, id := range eng.Voices() {
+			lbl := tts.VoiceDisplayName(id)
+			labels = append(labels, lbl)
+			labelToID[lbl] = id
+		}
+	}
+	return labels, labelToID
+}
+
 func (mw *MainWindow) showSettingsDialog() {
 	cfg := mw.Session.ConfigSnapshot()
 
-	// Identity & Mentions
+	// 1. Identity & Mentions
 	myUsernamesEntry := widget.NewEntry()
 	myUsernamesEntry.SetPlaceHolder("Your Twitch/YouTube/Kick/TikTok username(s), comma-separated")
 	myUsernamesEntry.SetText(strings.Join(cfg.Identity.MyUsernames, ", "))
@@ -30,8 +128,164 @@ func (mw *MainWindow) showSettingsDialog() {
 	ignoredEntry.SetPlaceHolder("Muted usernames, comma-separated")
 	ignoredEntry.SetText(strings.Join(cfg.Identity.IgnoredChatters, ", "))
 
-	// Audio & Voice Differentiation
-	hashVoicesCk := widget.NewCheck("Assign a unique neural voice to each chatter (FNV-1a hash)", nil)
+	// 2. Voice Packs & Voices
+	modelDir := tts.DefaultModelDir()
+	enabledSet := make(map[string]bool)
+	for _, m := range cfg.Audio.EffectiveEnabledModels() {
+		enabledSet[m] = true
+	}
+
+	modelChecks := make(map[string]*widget.Check, len(tts.AllModelFamilies))
+	modelRows := container.NewVBox()
+
+	formatPackLabel := func(spec tts.ModelFamilySpec) string {
+		installed := tts.IsModelFamilyInstalled(modelDir, spec.ID, cfg.Audio.UseGPU)
+		if spec.ID == tts.ModelKokoro || spec.ID == tts.ModelKokoroIntl {
+			installed = tts.IsKokoroInstalledForMode(modelDir, cfg.Audio.UseGPU)
+		}
+		status := fmt.Sprintf("Download ~%d MB", spec.DownloadSizeMB)
+		if installed {
+			status = "Installed"
+		}
+		return fmt.Sprintf("%s [%s] — %s", spec.Name, status, spec.Summary)
+	}
+
+	for _, spec := range tts.AllModelFamilies {
+		famSpec := spec
+		chk := widget.NewCheck(formatPackLabel(famSpec), nil)
+		chk.SetChecked(enabledSet[famSpec.ID])
+		modelChecks[famSpec.ID] = chk
+		modelRows.Add(chk)
+	}
+
+	packStatusLbl := widget.NewLabel("Shared Models Dir: " + modelDir)
+	packStatusLbl.Truncation = fyne.TextTruncateEllipsis
+	packProgress := widget.NewProgressBar()
+	packProgress.Hide()
+
+	voiceLabels, labelToVoiceID := availableVoiceOptions(cfg, mw.Session.Engine())
+	defaultVoiceSel := widget.NewSelect(voiceLabels, nil)
+	defaultVoiceSel.SetSelected(tts.VoiceDisplayName(cfg.Audio.DefaultVoice))
+
+	previewDefaultBtn := mw.newTipBtn("Preview Voice", theme.MediaPlayIcon(), "Synthesize and play a sample with the selected default voice", func() {
+		vid := labelToVoiceID[defaultVoiceSel.Selected]
+		if vid == "" {
+			vid = tts.VoiceIDFromLabel(defaultVoiceSel.Selected)
+		}
+		mw.Session.PreviewVoice(vid, "Hello from Hearsay! Ready to read live chat aloud.")
+	})
+
+	chatterVoiceMap := make(map[string]string)
+	if cfg.Identity.ChatterVoices != nil {
+		maps.Copy(chatterVoiceMap, cfg.Identity.ChatterVoices)
+	}
+	chatterAssignUserEntry := widget.NewEntry()
+	chatterAssignUserEntry.SetPlaceHolder("Username (e.g. mocomade)")
+	chatterAssignVoiceSel := widget.NewSelect(voiceLabels, nil)
+	if len(voiceLabels) > 0 {
+		chatterAssignVoiceSel.SetSelected(voiceLabels[0])
+	}
+	chatterListBox := container.NewVBox()
+
+	var rebuildChatterVoiceRows func()
+	rebuildChatterVoiceRows = func() {
+		chatterListBox.RemoveAll()
+		keys := slices.Sorted(maps.Keys(chatterVoiceMap))
+		if len(keys) == 0 {
+			chatterListBox.Add(widget.NewLabelWithStyle("No custom chatter voice assignments yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
+		} else {
+			for _, u := range keys {
+				uname := u
+				vid := chatterVoiceMap[uname]
+				lbl := widget.NewLabel(fmt.Sprintf("%s → %s", uname, tts.VoiceDisplayName(vid)))
+				lbl.Truncation = fyne.TextTruncateEllipsis
+				testBtn := mw.newTipBtn("", theme.MediaPlayIcon(), "Preview voice for "+uname, func() {
+					mw.Session.PreviewVoice(vid, fmt.Sprintf("Hello, this is %s speaking in chat!", uname))
+				})
+				delBtn := mw.newTipBtn("", theme.DeleteIcon(), "Remove custom voice for "+uname, func() {
+					delete(chatterVoiceMap, uname)
+					rebuildChatterVoiceRows()
+				})
+				chatterListBox.Add(container.NewBorder(nil, nil, nil, container.NewHBox(testBtn, delBtn), lbl))
+			}
+		}
+		chatterListBox.Refresh()
+	}
+	rebuildChatterVoiceRows()
+
+	addChatterVoiceBtn := mw.newTipBtn("Assign", theme.ContentAddIcon(), "Assign selected voice to this username", func() {
+		u := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(chatterAssignUserEntry.Text), "@"))
+		if u == "" {
+			return
+		}
+		vid := labelToVoiceID[chatterAssignVoiceSel.Selected]
+		if vid == "" {
+			vid = tts.VoiceIDFromLabel(chatterAssignVoiceSel.Selected)
+		}
+		chatterVoiceMap[u] = vid
+		chatterAssignUserEntry.SetText("")
+		rebuildChatterVoiceRows()
+	})
+
+	applyPacksBtn := mw.newTipBtn("Download & Load Selected Voice Packs", theme.DownloadIcon(), "Download any missing model packs and hot-reload the TTS engine", nil)
+	applyPacksBtn.Importance = widget.HighImportance
+	applyPacksBtn.OnTapped = func() {
+		var selectedModels []string
+		for _, spec := range tts.AllModelFamilies {
+			if c, ok := modelChecks[spec.ID]; ok && c.Checked {
+				selectedModels = append(selectedModels, spec.ID)
+			}
+		}
+		if len(selectedModels) == 0 {
+			selectedModels = []string{tts.ModelSupertonic}
+			if c, ok := modelChecks[tts.ModelSupertonic]; ok {
+				c.SetChecked(true)
+			}
+		}
+		_ = mw.Session.UpdateConfig(func(c *config.Config) {
+			c.Audio.EnabledModels = selectedModels
+		})
+		applyPacksBtn.Disable()
+		packProgress.SetValue(0)
+		packProgress.Show()
+		packStatusLbl.SetText("Downloading / initializing voice packs...")
+
+		go func() {
+			err := mw.Session.ReloadEngine(modelDir, func(modelName string, pct float64) {
+				fyne.Do(func() {
+					packStatusLbl.SetText(fmt.Sprintf("Downloading %s (%.0f%%)...", modelName, pct*100))
+					packProgress.SetValue(pct)
+				})
+			})
+			fyne.Do(func() {
+				applyPacksBtn.Enable()
+				packProgress.Hide()
+				if err != nil {
+					packStatusLbl.SetText("Error loading voice packs: " + err.Error())
+					return
+				}
+				updatedCfg := mw.Session.ConfigSnapshot()
+				for _, spec := range tts.AllModelFamilies {
+					if c, ok := modelChecks[spec.ID]; ok {
+						c.SetText(formatPackLabel(spec))
+						c.Refresh()
+					}
+				}
+				voiceLabels, labelToVoiceID = availableVoiceOptions(updatedCfg, mw.Session.Engine())
+				defaultVoiceSel.Options = voiceLabels
+				defaultVoiceSel.Refresh()
+				chatterAssignVoiceSel.Options = voiceLabels
+				if len(voiceLabels) > 0 {
+					chatterAssignVoiceSel.SetSelected(voiceLabels[0])
+				}
+				chatterAssignVoiceSel.Refresh()
+				packStatusLbl.SetText(fmt.Sprintf("Loaded %d total voices across %d pack(s)!", len(voiceLabels), len(selectedModels)))
+			})
+		}()
+	}
+
+	// 3. Coalescence, Chat Rules & Crowd Control
+	hashVoicesCk := widget.NewCheck("Assign a unique neural voice to each chatter automatically (FNV-1a hash)", nil)
 	hashVoicesCk.SetChecked(cfg.Audio.HashChatterVoices)
 
 	speakSwitchCk := widget.NewCheck("Announce channel name only when active speaker switches streams", nil)
@@ -40,13 +294,24 @@ func (mw *MainWindow) showSettingsDialog() {
 	speakNamesCk := widget.NewCheck("Speak chatter usernames before messages", nil)
 	speakNamesCk.SetChecked(cfg.Audio.SpeakNames)
 
-	speakEmotesCk := widget.NewCheck("Speak emote names aloud", nil)
+	coalesceSel := widget.NewSelect(coalesceOptions, nil)
+	coalesceSel.SetSelected(coalesceSecToLabel(cfg.Audio.CoalesceSeconds))
+
+	speakEmotesCk := widget.NewCheck("Speak emote & emoji names aloud (unchecked = strip emotes)", nil)
 	speakEmotesCk.SetChecked(cfg.Audio.SpeakEmotes)
+
+	dedupeEmotesCk := widget.NewCheck("Deduplicate repeated emotes & emojis (speak at most once per message)", nil)
+	dedupeEmotesCk.SetChecked(cfg.Audio.DeduplicateEmotes)
+
+	dupWordsSel := widget.NewSelect(duplicateWordsOptions, nil)
+	dupWordsSel.SetSelected(dupWordsToLabel(cfg.Audio.MaxDuplicateWords))
 
 	earconsCk := widget.NewCheck("Play spatial earcons (Stream Live/Offline & @Mention chimes)", nil)
 	earconsCk.SetChecked(cfg.Audio.EarconsEnabled)
 
-	// Crowd Control
+	showChannelIconsCk := widget.NewCheck("Show compact channel avatar icons instead of channel names in Live Log", nil)
+	showChannelIconsCk.SetChecked(cfg.Accessibility.ShowChannelIcons)
+
 	cooldownEntry := widget.NewEntry()
 	cooldownEntry.SetText(strconv.Itoa(cfg.Crowd.ChatterCooldownSec))
 
@@ -59,7 +324,7 @@ func (mw *MainWindow) showSettingsDialog() {
 	speakNoTextCk := widget.NewCheck("Speak no-text events (follows, shares, gift streaks)", nil)
 	speakNoTextCk.SetChecked(cfg.Crowd.SpeakNoTextEvents)
 
-	// Translation
+	// 4. Translation & Hotkeys
 	transEnabledCk := widget.NewCheck("Automatically translate foreign-language chat messages", nil)
 	transEnabledCk.SetChecked(cfg.Translation.Enabled)
 
@@ -67,7 +332,6 @@ func (mw *MainWindow) showSettingsDialog() {
 	targetLangEntry.SetPlaceHolder("en, es, fr, de, ja...")
 	targetLangEntry.SetText(cfg.Translation.TargetLang)
 
-	// Global Hotkeys
 	hkPauseEntry := widget.NewEntry()
 	hkPauseEntry.SetText(cfg.Accessibility.Hotkeys.PauseResume)
 	hkSkipEntry := widget.NewEntry()
@@ -77,43 +341,50 @@ func (mw *MainWindow) showSettingsDialog() {
 	hkPanicEntry := widget.NewEntry()
 	hkPanicEntry.SetText(cfg.Accessibility.Hotkeys.PanicMute)
 
-	// Shared Neural TTS Model Pack Status
-	modelDir := tts.DefaultModelDir()
-	supertonicStatus := "Not Installed"
-	if tts.IsModelFamilyInstalled(modelDir, tts.ModelSupertonic, false) {
-		supertonicStatus = "Installed (Shared with TownCrier)"
-	}
-	kokoroStatus := "Not Installed"
-	if tts.IsKokoroInstalledForMode(modelDir, false) {
-		kokoroStatus = "Installed (Shared with TownCrier)"
-	}
-	modelStatusLbl := widget.NewLabel(fmt.Sprintf("Shared Models Dir: %s\n- Supertonic: %s\n- Kokoro-82M: %s", modelDir, supertonicStatus, kokoroStatus))
+	chatterScroll := container.NewVScroll(chatterListBox)
+	chatterScroll.SetMinSize(fyne.NewSize(200, 110))
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem("My Identity & Friends", container.NewVBox(
+		container.NewTabItem("Voices & Voice Packs", container.NewVScroll(container.NewVBox(
+			widget.NewLabelWithStyle("Neural TTS Voice Model Packs (Shared with TownCrier):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			modelRows,
+			applyPacksBtn,
+			packProgress,
+			packStatusLbl,
+			widget.NewSeparator(),
+			hashVoicesCk,
+			container.NewBorder(nil, nil, widget.NewLabel("Default Voice:"), previewDefaultBtn, defaultVoiceSel),
+			widget.NewSeparator(),
+			widget.NewLabelWithStyle("Custom Chatter Voice Assignments:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewBorder(nil, nil, nil, addChatterVoiceBtn, container.NewGridWithColumns(2, chatterAssignUserEntry, chatterAssignVoiceSel)),
+			chatterScroll,
+		))),
+		container.NewTabItem("Coalescence & Crowd Control", container.NewVScroll(container.NewVBox(
+			widget.NewLabelWithStyle("Speech Coalescence & Formatting:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			speakNamesCk,
+			container.NewBorder(nil, nil, widget.NewLabel("Coalesce Consecutive Messages (Same Speaker):"), nil, coalesceSel),
+			speakSwitchCk,
+			speakEmotesCk,
+			dedupeEmotesCk,
+			container.NewBorder(nil, nil, widget.NewLabel("Max Consecutive Duplicate Words:"), nil, dupWordsSel),
+			earconsCk,
+			showChannelIconsCk,
+			widget.NewSeparator(),
+			widget.NewLabelWithStyle("Crowd Control & Pacing:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			skipSpamCk,
+			speakNoTextCk,
+			container.NewGridWithColumns(2,
+				widget.NewLabel("Per-Chatter Cooldown (sec, 0=off):"), cooldownEntry,
+				widget.NewLabel("Min Global Pacing Gap (ms, 0=off):"), pacingEntry,
+			),
+		))),
+		container.NewTabItem("Identity & Friends", container.NewVBox(
 			widget.NewLabel("My Username(s) (@mentions play a spatial chime and bypass Crowd Control):"),
 			myUsernamesEntry,
-			widget.NewLabel("Priority Friends (always spoken):"),
+			widget.NewLabel("Priority VIPs / Friends (always spoken):"),
 			priorityEntry,
 			widget.NewLabel("Muted Chatters (never spoken):"),
 			ignoredEntry,
-		)),
-		container.NewTabItem("Crowd Control", container.NewVBox(
-			skipSpamCk,
-			speakNoTextCk,
-			widget.NewLabel("Per-Chatter Cooldown (seconds, 0 = off):"),
-			cooldownEntry,
-			widget.NewLabel("Minimum Global Pacing Gap (milliseconds, 0 = off):"),
-			pacingEntry,
-		)),
-		container.NewTabItem("Voices & Audio", container.NewVBox(
-			hashVoicesCk,
-			speakSwitchCk,
-			speakNamesCk,
-			speakEmotesCk,
-			earconsCk,
-			widget.NewSeparator(),
-			modelStatusLbl,
 		)),
 		container.NewTabItem("Translation & Hotkeys", container.NewVBox(
 			transEnabledCk,
@@ -130,20 +401,44 @@ func (mw *MainWindow) showSettingsDialog() {
 		)),
 	)
 
-	d := dialog.NewCustomConfirm("Hearsay Settings", "Save Changes", "Cancel", tabs, func(save bool) {
+	d := dialog.NewCustomConfirm("Hearsay Settings & Voices", "Save Changes", "Cancel", tabs, func(save bool) {
 		if !save {
 			return
 		}
+		var selectedModels []string
+		for _, spec := range tts.AllModelFamilies {
+			if c, ok := modelChecks[spec.ID]; ok && c.Checked {
+				selectedModels = append(selectedModels, spec.ID)
+			}
+		}
+		if len(selectedModels) == 0 {
+			selectedModels = []string{tts.ModelSupertonic}
+		}
+		defVoiceID := labelToVoiceID[defaultVoiceSel.Selected]
+		if defVoiceID == "" {
+			defVoiceID = tts.VoiceIDFromLabel(defaultVoiceSel.Selected)
+		}
+
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Identity.MyUsernames = parseCSVList(myUsernamesEntry.Text)
 			c.Identity.PriorityChatters = parseCSVList(priorityEntry.Text)
 			c.Identity.IgnoredChatters = parseCSVList(ignoredEntry.Text)
+			c.Identity.ChatterVoices = maps.Clone(chatterVoiceMap)
 
+			c.Audio.EnabledModels = selectedModels
+			if defVoiceID != "" {
+				c.Audio.DefaultVoice = defVoiceID
+			}
 			c.Audio.HashChatterVoices = hashVoicesCk.Checked
 			c.Audio.SpeakChannelOnSwitch = speakSwitchCk.Checked
 			c.Audio.SpeakNames = speakNamesCk.Checked
+			c.Audio.CoalesceSeconds = labelToCoalesceSec(coalesceSel.Selected)
 			c.Audio.SpeakEmotes = speakEmotesCk.Checked
+			c.Audio.DeduplicateEmotes = dedupeEmotesCk.Checked
+			c.Audio.MaxDuplicateWords = labelToDupWords(dupWordsSel.Selected)
 			c.Audio.EarconsEnabled = earconsCk.Checked
+
+			c.Accessibility.ShowChannelIcons = showChannelIconsCk.Checked
 
 			if cd, err := strconv.Atoi(strings.TrimSpace(cooldownEntry.Text)); err == nil && cd >= 0 {
 				c.Crowd.ChatterCooldownSec = cd
@@ -163,9 +458,13 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Accessibility.Hotkeys.PanicMute = strings.TrimSpace(hkPanicEntry.Text)
 		})
 		updated := mw.Session.ConfigSnapshot()
+		if mw.channelIconsCk != nil && mw.channelIconsCk.Checked != updated.Accessibility.ShowChannelIcons {
+			mw.channelIconsCk.SetChecked(updated.Accessibility.ShowChannelIcons)
+		}
 		mw.registerHotkeys(updated.Accessibility.Hotkeys)
+		mw.refreshLog()
 	}, mw.Window)
-	d.Resize(fyne.NewSize(640, 480))
+	d.Resize(fyne.NewSize(720, 560))
 	d.Show()
 }
 

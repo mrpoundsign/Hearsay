@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	fyne.io/fyne/v2 v2.8.2
 	github.com/gempir/go-twitch-irc/v4 v4.4.1
-	github.com/mrpoundsign/TownCrier v0.0.10-0.20261109191350-7f71e3398958
+	github.com/mrpoundsign/TownCrier v0.0.10
 	github.com/mrpoundsign/appinstaller v0.0.1
 )
 

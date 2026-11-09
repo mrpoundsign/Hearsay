@@ -46,6 +46,7 @@ type AudioConfig struct {
 	UnknownGenderPolicy  string   `json:"unknown_gender_policy"`
 	SpeakChannelOnSwitch bool     `json:"speak_channel_on_switch"`
 	SpeakNames           bool     `json:"speak_names"`
+	NaturalizeNames      bool     `json:"naturalize_names"`
 	CoalesceSeconds      int      `json:"coalesce_seconds"`
 	SpeakEmotes          bool     `json:"speak_emotes"`
 	DeduplicateEmotes    bool     `json:"deduplicate_emotes"`
@@ -165,6 +166,7 @@ func DefaultConfig() *Config {
 			UnknownGenderPolicy:  "balanced",
 			SpeakChannelOnSwitch: true,
 			SpeakNames:           true,
+			NaturalizeNames:      true,
 			CoalesceSeconds:      30,
 			SpeakEmotes:          false,
 			DeduplicateEmotes:    true,

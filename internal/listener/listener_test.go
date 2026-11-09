@@ -239,6 +239,19 @@ func TestSelectChatterVoiceAndSmartChannelSwitch(t *testing.T) {
 		t.Fatalf("expected coalesced follow-up 'and part two' without repeating username, got %q (coal=%v)", spSecond, coal2)
 	}
 
+	// Username naturalizer enabled by default, can be toggled off
+	evRawHandle := chat.Event{Platform: "twitch", UserName: "xx_darkknight99_xx", DisplayName: "xX_DarkKnight99_Xx", Text: "Good game"}
+	spNat, _ := FormatSpokenText(evRawHandle, "Good game", slotA, cfg, 1, "")
+	if spNat != "Dark Knight 99: Good game" {
+		t.Fatalf("expected naturalized speaker 'Dark Knight 99: Good game', got %q", spNat)
+	}
+	cfg.Audio.NaturalizeNames = false
+	spRaw, _ := FormatSpokenText(evRawHandle, "Good game", slotA, cfg, 1, "")
+	if spRaw != "xX_DarkKnight99_Xx: Good game" {
+		t.Fatalf("expected raw speaker 'xX_DarkKnight99_Xx: Good game' when NaturalizeNames=false, got %q", spRaw)
+	}
+	cfg.Audio.NaturalizeNames = true
+
 	// User chat color extraction & dark-theme readability clamping
 	kickRaw := map[string]any{
 		"sender": map[string]any{

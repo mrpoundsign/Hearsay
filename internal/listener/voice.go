@@ -238,7 +238,10 @@ func FormatSpokenTextWithCoalesce(
 		b.WriteString(", ")
 	}
 
-	speaker := chatterName(ev)
+	speaker := strings.TrimLeft(chatterName(ev), "@")
+	if speaker != "" && cfg != nil && cfg.Audio.NaturalizeNames {
+		speaker = chat.NaturalizeUsername(speaker)
+	}
 	spKey := speakerKey(ev)
 
 	if cfg != nil && cfg.Audio.SpeakNames && cfg.Audio.CoalesceSeconds > 0 &&

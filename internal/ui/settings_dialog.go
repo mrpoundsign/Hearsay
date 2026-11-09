@@ -365,6 +365,9 @@ func (mw *MainWindow) showSettingsDialog() {
 	speakNamesCk := widget.NewCheck("Speak chatter usernames before messages", nil)
 	speakNamesCk.SetChecked(cfg.Audio.SpeakNames)
 
+	naturalizeNamesCk := widget.NewCheck("Naturalize chatter usernames (split CamelCase/snake_case, strip wrappers & trailing numbers)", nil)
+	naturalizeNamesCk.SetChecked(cfg.Audio.NaturalizeNames)
+
 	coalesceSel := widget.NewSelect(coalesceOptions, nil)
 	coalesceSel.SetSelected(coalesceSecToLabel(cfg.Audio.CoalesceSeconds))
 
@@ -444,6 +447,7 @@ func (mw *MainWindow) showSettingsDialog() {
 		container.NewTabItem("Coalescence & Crowd Control", container.NewVScroll(container.NewVBox(
 			widget.NewLabelWithStyle("Speech Coalescence & Formatting:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			speakNamesCk,
+			naturalizeNamesCk,
 			container.NewBorder(nil, nil, widget.NewLabel("Coalesce Consecutive Messages (Same Speaker):"), nil, coalesceSel),
 			speakSwitchCk,
 			speakEmotesCk,
@@ -528,6 +532,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Audio.UnknownGenderPolicy = labelToUnknownGenderPolicy(unknownGenderSel.Selected)
 			c.Audio.SpeakChannelOnSwitch = speakSwitchCk.Checked
 			c.Audio.SpeakNames = speakNamesCk.Checked
+			c.Audio.NaturalizeNames = naturalizeNamesCk.Checked
 			c.Audio.CoalesceSeconds = labelToCoalesceSec(coalesceSel.Selected)
 			c.Audio.SpeakEmotes = speakEmotesCk.Checked
 			c.Audio.DeduplicateEmotes = dedupeEmotesCk.Checked

@@ -134,7 +134,89 @@ func run() error {
 			})
 		}
 
+		launchMainUI := func(eng *tts.MultiEngine) {
+			if eng != nil {
+				activeEngine = eng
+				tracker.SetTTSStatus(true, eng.Provider())
+			} else {
+				tracker.SetTTSStatus(false, "Skipped (configure in Settings & Voices)")
+			}
+
+			tracker.SetStatus("Ready! Opening Hearsay Radio Deck...")
+			time.Sleep(250 * time.Millisecond)
+
+			session := listener.NewSession(cfg, configStore)
+			activeSession = session
+			if player != nil {
+				session.SetPlayer(player)
+			}
+			if eng != nil {
+				session.SetEngine(eng)
+			}
+			_ = session.Start()
+
+			if strings.TrimSpace(*tuneFlag) != "" {
+				if _, tuneErr := session.TuneIn(*tuneFlag, "twitch"); tuneErr != nil {
+					log.Printf("Warning: -tune flag error: %v", tuneErr)
+				}
+			}
+
+			fyne.Do(func() {
+				defer logging.RecoverAndExit("ui-init")
+				mainWindow := ui.NewMainWindow(myApp, session, audio.EnumeratePlaybackDevices)
+				mainWindow.Window.SetMaster()
+				mainWindow.Window.Show()
+				launchWin.Close()
+			})
+		}
+
 		var initTTSAndLaunch func()
+		skipModelAndContinue := func(failedFam string) func() {
+			return func() {
+				defer logging.RecoverAndExit("tts-skip")
+				modelDir := tts.DefaultModelDir()
+				var remaining []string
+				for _, m := range cfg.Audio.EffectiveEnabledModels() {
+					if m == failedFam {
+						continue
+					}
+					if (failedFam == tts.ModelKokoro || failedFam == tts.ModelKokoroIntl) &&
+						(m == tts.ModelKokoro || m == tts.ModelKokoroIntl) {
+						continue
+					}
+					if tts.IsModelFamilyInstalled(modelDir, m, cfg.Audio.UseGPU) {
+						remaining = append(remaining, m)
+					}
+				}
+				if len(remaining) == 0 {
+					for _, spec := range tts.AllModelFamilies {
+						if tts.IsModelFamilyInstalled(modelDir, spec.ID, cfg.Audio.UseGPU) {
+							remaining = append(remaining, spec.ID)
+							break
+						}
+					}
+				}
+				if len(remaining) > 0 {
+					cfg.Audio.EnabledModels = remaining
+				} else {
+					cfg.Audio.EnabledModels = []string{tts.ModelSupertonic}
+				}
+				_ = configStore.Save(cfg)
+
+				if len(remaining) > 0 {
+					threads := cfg.Audio.NumThreads
+					if threads <= 0 {
+						threads = 4
+					}
+					if eng, engErr := tts.NewMultiEngine(modelDir, remaining, threads, cfg.Audio.UseGPU, tts.DefaultMaxClauseWords, 0); engErr == nil {
+						launchMainUI(eng)
+						return
+					}
+				}
+				launchMainUI(nil)
+			}
+		}
+
 		initTTSAndLaunch = func() {
 			defer logging.RecoverAndExit("tts-init")
 
@@ -150,9 +232,10 @@ func run() error {
 						if dlErr := tts.DownloadKokoroModelForMode(modelDir, cfg.Audio.UseGPU, tracker.SetDownloadProgress); dlErr != nil {
 							log.Printf("Error: failed to download Kokoro TTS models: %v", dlErr)
 							tracker.ShowFatalError(
-								"Failed to download required TTS models. Check your internet connection.",
+								"Failed to download Kokoro-82M models. You can retry, skip to launch with installed voices, or quit.",
 								"Download failed ("+dlErr.Error()+")",
 								initTTSAndLaunch,
+								skipModelAndContinue(fam),
 								quitApp,
 							)
 							return
@@ -169,9 +252,10 @@ func run() error {
 					if dlErr := tts.DownloadModelFamily(modelDir, fam, cfg.Audio.UseGPU, tracker.SetDownloadProgress); dlErr != nil {
 						log.Printf("Error: failed to download %s TTS models: %v", fam, dlErr)
 						tracker.ShowFatalError(
-							"Failed to download "+spec.ShortName+" TTS models. Check your internet connection.",
+							"Failed to download "+spec.ShortName+" TTS models. You can retry, skip to launch, or quit.",
 							"Download failed ("+dlErr.Error()+")",
 							initTTSAndLaunch,
+							skipModelAndContinue(fam),
 							quitApp,
 						)
 						return
@@ -188,41 +272,16 @@ func run() error {
 			if engErr != nil {
 				log.Printf("Error: failed to initialize TTS engine: %v", engErr)
 				tracker.ShowFatalError(
-					"Failed to initialize neural TTS engine.",
+					"Failed to initialize neural TTS engine. You can retry, skip to launch, or quit.",
 					"Init error: "+engErr.Error(),
 					initTTSAndLaunch,
+					func() { launchMainUI(nil) },
 					quitApp,
 				)
 				return
 			}
 
-			activeEngine = eng
-			tracker.SetTTSStatus(true, eng.Provider())
-
-			tracker.SetStatus("Ready! Opening Hearsay Radio Deck...")
-			time.Sleep(250 * time.Millisecond)
-
-			session := listener.NewSession(cfg, configStore)
-			activeSession = session
-			if player != nil {
-				session.SetPlayer(player)
-			}
-			session.SetEngine(eng)
-			_ = session.Start()
-
-			if strings.TrimSpace(*tuneFlag) != "" {
-				if _, tuneErr := session.TuneIn(*tuneFlag, "twitch"); tuneErr != nil {
-					log.Printf("Warning: -tune flag error: %v", tuneErr)
-				}
-			}
-
-			fyne.Do(func() {
-				defer logging.RecoverAndExit("ui-init")
-				mainWindow := ui.NewMainWindow(myApp, session, audio.EnumeratePlaybackDevices)
-				mainWindow.Window.SetMaster()
-				mainWindow.Window.Show()
-				launchWin.Close()
-			})
+			launchMainUI(eng)
 		}
 
 		initTTSAndLaunch()

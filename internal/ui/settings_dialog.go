@@ -275,6 +275,7 @@ func (mw *MainWindow) showSettingsDialog() {
 				c.SetChecked(true)
 			}
 		}
+		prevModels := slices.Clone(mw.Session.ConfigSnapshot().Audio.EffectiveEnabledModels())
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Audio.EnabledModels = selectedModels
 		})
@@ -294,6 +295,9 @@ func (mw *MainWindow) showSettingsDialog() {
 				applyPacksBtn.Enable()
 				packProgress.Hide()
 				if err != nil {
+					_ = mw.Session.UpdateConfig(func(c *config.Config) {
+						c.Audio.EnabledModels = prevModels
+					})
 					packStatusLbl.SetText("Error loading voice packs: " + err.Error())
 					return
 				}
@@ -484,6 +488,18 @@ func (mw *MainWindow) showSettingsDialog() {
 			defVoiceID = tts.VoiceIDFromLabel(defaultVoiceSel.Selected)
 		}
 
+		prevModels := slices.Clone(mw.Session.ConfigSnapshot().Audio.EffectiveEnabledModels())
+		modelsChanged := !slices.Equal(prevModels, selectedModels)
+		needsReload := modelsChanged || mw.Session.Engine() == nil
+		if !needsReload {
+			for _, m := range selectedModels {
+				if !tts.IsModelFamilyInstalled(modelDir, m, cfg.Audio.UseGPU) {
+					needsReload = true
+					break
+				}
+			}
+		}
+
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Identity.MyUsernames = parseCSVList(myUsernamesEntry.Text)
 			c.Identity.PriorityChatters = parseCSVList(priorityEntry.Text)
@@ -533,6 +549,32 @@ func (mw *MainWindow) showSettingsDialog() {
 		}
 		mw.registerHotkeys(updated.Accessibility.Hotkeys)
 		mw.refreshLog()
+
+		if needsReload {
+			go func() {
+				err := mw.Session.ReloadEngine(modelDir, func(modelName string, pct float64) {
+					fyne.Do(func() {
+						if mw.nowSpeakingLbl != nil {
+							mw.nowSpeakingLbl.SetText(fmt.Sprintf("Downloading %s voice pack (%.0f%%)...", modelName, pct*100))
+						}
+					})
+				})
+				fyne.Do(func() {
+					if err != nil {
+						_ = mw.Session.UpdateConfig(func(c *config.Config) {
+							c.Audio.EnabledModels = prevModels
+						})
+						if mw.nowSpeakingLbl != nil {
+							mw.nowSpeakingLbl.SetText("Voice pack download failed: " + err.Error())
+						}
+						return
+					}
+					if mw.nowSpeakingLbl != nil {
+						mw.nowSpeakingLbl.SetText(fmt.Sprintf("Loaded %d voice pack(s) ready!", len(selectedModels)))
+					}
+				})
+			}()
+		}
 	}, mw.Window)
 	d.Resize(fyne.NewSize(720, 560))
 	d.Show()

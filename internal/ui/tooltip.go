@@ -1,13 +1,17 @@
 package ui
 
 import (
+	"image/color"
+
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 )
 
 // TooltipButton extends widget.Button with desktop hover callbacks to display
-// a floating tooltip popup and status hint when hovered.
+// a non-modal floating tooltip bubble and status hint when hovered.
 type TooltipButton struct {
 	widget.Button
 	Tooltip   string
@@ -55,6 +59,20 @@ func (b *TooltipButton) MouseOut() {
 	}
 }
 
+func buildTooltipBubble() (*fyne.Container, *canvas.Text) {
+	bg := canvas.NewRectangle(color.NRGBA{R: 15, G: 23, B: 42, A: 245})
+	bg.StrokeColor = color.NRGBA{R: 56, G: 189, B: 248, A: 220}
+	bg.StrokeWidth = 1
+	bg.CornerRadius = 5
+
+	txt := canvas.NewText("", color.NRGBA{R: 248, G: 250, B: 252, A: 255})
+	txt.TextSize = 12
+
+	bubble := container.NewStack(bg, container.NewPadded(txt))
+	bubble.Hide()
+	return bubble, txt
+}
+
 func (mw *MainWindow) newTipBtn(label string, icon fyne.Resource, tooltip string, tapped func()) *TooltipButton {
 	return NewTooltipButton(label, icon, tooltip, mw.showTooltip, mw.hideTooltip, tapped)
 }
@@ -69,27 +87,40 @@ func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
 	if mw.nowSpeakingLbl != nil {
 		mw.nowSpeakingLbl.SetText("Tip: " + text)
 	}
-	if mw.activeTipPop != nil {
-		mw.activeTipPop.Hide()
-		mw.activeTipPop = nil
-	}
-	cnv := mw.Window.Canvas()
-	if cnv == nil || btn == nil {
+	if mw.tooltipBubble == nil || mw.tooltipText == nil || mw.tooltipLayer == nil || btn == nil {
 		return
 	}
-	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(btn)
+	cnv := mw.Window.Canvas()
+	if cnv == nil || len(cnv.Overlays().List()) > 0 {
+		mw.tooltipBubble.Hide()
+		return
+	}
+	appInstance := fyne.CurrentApp()
+	if appInstance == nil || appInstance.Driver() == nil {
+		return
+	}
+	pos := appInstance.Driver().AbsolutePositionForObject(btn)
 	if pos.X <= 0 && pos.Y <= 0 {
 		return
 	}
-	lbl := widget.NewLabel(text)
-	pop := widget.NewPopUp(lbl, cnv)
-	popY := pos.Y + btn.Size().Height + 4
-	if popY+pop.MinSize().Height > cnv.Size().Height {
-		popY = max(4, pos.Y-pop.MinSize().Height-4)
+	layerPos := appInstance.Driver().AbsolutePositionForObject(mw.tooltipLayer)
+	relX := pos.X - layerPos.X
+	relY := pos.Y - layerPos.Y
+
+	mw.tooltipText.Text = text
+	mw.tooltipText.Refresh()
+	bubbleSize := mw.tooltipBubble.MinSize()
+	mw.tooltipBubble.Resize(bubbleSize)
+
+	cnvSize := cnv.Size()
+	popY := relY + btn.Size().Height + 6
+	if popY+bubbleSize.Height > cnvSize.Height-6 {
+		popY = max(4, relY-bubbleSize.Height-6)
 	}
-	popX := min(pos.X, max(4, cnv.Size().Width-pop.MinSize().Width-8))
-	pop.ShowAtPosition(fyne.NewPos(popX, popY))
-	mw.activeTipPop = pop
+	popX := max(4, min(relX, cnvSize.Width-bubbleSize.Width-8))
+	mw.tooltipBubble.Move(fyne.NewPos(popX, popY))
+	mw.tooltipBubble.Show()
+	mw.tooltipBubble.Refresh()
 	mw.activeTipOwner = btn
 }
 
@@ -100,9 +131,8 @@ func (mw *MainWindow) hideTooltip(btn *TooltipButton) {
 	if btn != nil && mw.activeTipOwner != nil && mw.activeTipOwner != btn {
 		return
 	}
-	if mw.activeTipPop != nil {
-		mw.activeTipPop.Hide()
-		mw.activeTipPop = nil
+	if mw.tooltipBubble != nil {
+		mw.tooltipBubble.Hide()
 	}
 	mw.activeTipOwner = nil
 	if mw.nowSpeakingLbl != nil && mw.lastStatusText != "" {

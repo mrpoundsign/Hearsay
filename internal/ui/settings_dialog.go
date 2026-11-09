@@ -525,6 +525,9 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Accessibility.Hotkeys.PanicMute = strings.TrimSpace(hkPanicEntry.Text)
 		})
 		updated := mw.Session.ConfigSnapshot()
+		if mw.speakEmotesCk != nil && mw.speakEmotesCk.Checked != updated.Audio.SpeakEmotes {
+			mw.speakEmotesCk.SetChecked(updated.Audio.SpeakEmotes)
+		}
 		if mw.channelIconsCk != nil && mw.channelIconsCk.Checked != updated.Accessibility.ShowChannelIcons {
 			mw.channelIconsCk.SetChecked(updated.Accessibility.ShowChannelIcons)
 		}

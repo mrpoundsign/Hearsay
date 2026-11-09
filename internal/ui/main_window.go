@@ -41,10 +41,13 @@ type MainWindow struct {
 	lastStatusText string
 	fontScaleSel   *widget.Select
 	highContrastCk *widget.Check
+	speakEmotesCk  *widget.Check
 	channelIconsCk *widget.Check
 	miniToggleBtn  *TooltipButton
 	panicBtn       *TooltipButton
-	activeTipPop   *widget.PopUp
+	tooltipLayer   *fyne.Container
+	tooltipBubble  *fyne.Container
+	tooltipText    *canvas.Text
 	activeTipOwner *TooltipButton
 
 	// Quick Tune Bar
@@ -310,6 +313,13 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	logHeader := widget.NewLabelWithStyle("Unified Live Log", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	logHeader.Truncation = fyne.TextTruncateEllipsis
 
+	mw.speakEmotesCk = widget.NewCheck("Speak Emotes", func(checked bool) {
+		_ = mw.Session.UpdateConfig(func(c *config.Config) {
+			c.Audio.SpeakEmotes = checked
+		})
+	})
+	mw.speakEmotesCk.SetChecked(cfg.Audio.SpeakEmotes)
+
 	mw.channelIconsCk = widget.NewCheck("Channel Icons", func(checked bool) {
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Accessibility.ShowChannelIcons = checked
@@ -318,7 +328,11 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	})
 	mw.channelIconsCk.SetChecked(cfg.Accessibility.ShowChannelIcons)
 
-	logHeaderRow := container.NewBorder(nil, nil, nil, mw.channelIconsCk, logHeader)
+	logHeaderRow := container.NewBorder(
+		nil, nil, nil,
+		container.NewHBox(mw.speakEmotesCk, mw.channelIconsCk),
+		logHeader,
+	)
 
 	rightPane := container.NewBorder(
 		container.NewVBox(
@@ -333,11 +347,15 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	mainSplit := container.NewHSplit(leftSplit, rightPane)
 	mainSplit.Offset = 0.50
 
-	mw.fullRoot = container.NewBorder(
+	mw.tooltipBubble, mw.tooltipText = buildTooltipBubble()
+	mw.tooltipLayer = container.NewWithoutLayout(mw.tooltipBubble)
+
+	baseFullRoot := container.NewBorder(
 		container.NewVBox(headerTop, widget.NewSeparator()),
 		nil, nil, nil,
 		mainSplit,
 	)
+	mw.fullRoot = container.NewStack(baseFullRoot, mw.tooltipLayer)
 
 	mw.miniRoot = mw.buildMiniPlayerRoot()
 }

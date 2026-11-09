@@ -73,6 +73,19 @@ func TestMainWindowQuickTuneMiniPlayerAndTheme(t *testing.T) {
 		t.Fatalf("expected ShowChannelIcons=true after checking Channel Icons toggle")
 	}
 
+	// Verify Speak Emotes toggle in main window
+	if sess.ConfigSnapshot().Audio.SpeakEmotes {
+		t.Fatalf("expected SpeakEmotes=false by default")
+	}
+	mw.speakEmotesCk.SetChecked(true)
+	if !sess.ConfigSnapshot().Audio.SpeakEmotes {
+		t.Fatalf("expected SpeakEmotes=true after checking Speak Emotes toggle")
+	}
+	mw.speakEmotesCk.SetChecked(false)
+	if sess.ConfigSnapshot().Audio.SpeakEmotes {
+		t.Fatalf("expected SpeakEmotes=false after unchecking Speak Emotes toggle")
+	}
+
 	// Verify 1-Click Mini Player toggle
 	if mw.IsMiniMode() {
 		t.Fatalf("expected initial IsMiniMode() == false")
@@ -148,11 +161,14 @@ func TestMainWindowConcurrentUpdatesAndSlotControls(t *testing.T) {
 		t.Fatalf("expected 10 log entries, got %d", len(sess.LogSnapshot()))
 	}
 
-	// Verify TooltipButton hover and unhover behavior under uiMu
+	// Verify TooltipButton hover and unhover behavior under uiMu without pushing modal PopUp overlays
 	if mw.pauseBtn.Tooltip == "" || mw.panicBtn.Tooltip == "" {
 		t.Fatalf("expected tooltips on transport and header buttons")
 	}
 	mw.showTooltip(mw.pauseBtn, mw.pauseBtn.Tooltip)
+	if overlays := len(mw.Window.Canvas().Overlays().List()); overlays != 0 {
+		t.Fatalf("expected 0 modal canvas overlays when showing tooltip, got %d", overlays)
+	}
 	mw.hideTooltip(mw.pauseBtn)
 }
 

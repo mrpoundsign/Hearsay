@@ -84,3 +84,42 @@ jobs:
           chmod +x ./build.sh
           ./build.sh lint
           ./build.sh test
+
+  macos-app:
+    name: Build macOS App Bundle (arm64)
+    needs: quality-gate
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: false
+
+      - name: Cache Go Modules & Build Artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/Library/Caches/go-build
+          key: ${{ runner.os }}-go-1.27-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.27-
+          save-always: true
+
+      - name: Build Hearsay.app Bundle
+        run: |
+          chmod +x ./build.sh
+          go mod download
+          go mod download github.com/k2-fsa/sherpa-onnx-go-macos
+          VERSION="dev-${GITHUB_SHA::7}" ./build.sh package-mac
+
+      - name: Upload Hearsay.app Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hearsay-macos-arm64
+          path: dist/Hearsay-*-darwin-arm64.tar.gz
+          retention-days: 7

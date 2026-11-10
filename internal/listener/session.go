@@ -287,6 +287,7 @@ func (s *Session) ConfigSnapshot() *config.Config {
 // UpdateConfig applies a mutation function to the configuration and persists it to the store.
 func (s *Session) UpdateConfig(mutator func(cfg *config.Config)) error {
 	s.mu.Lock()
+	prevDevID := s.cfg.Audio.OutputDeviceID
 	mutator(s.cfg)
 	s.cfg.Normalize()
 	cp := s.cfg.Clone()
@@ -295,6 +296,11 @@ func (s *Session) UpdateConfig(mutator func(cfg *config.Config)) error {
 	s.mu.Unlock()
 
 	if p != nil {
+		if cp.Audio.OutputDeviceID != prevDevID {
+			if err := p.SwitchDevice(cp.Audio.OutputDeviceID); err != nil {
+				log.Printf("[Session] Warning: failed to switch audio output device: %v", err)
+			}
+		}
 		p.SetVolume(float32(cp.Audio.MasterVolume))
 	}
 	if store != nil {

@@ -164,7 +164,18 @@ func (mw *MainWindow) showSettingsDialog() {
 	ignoredEntry.SetPlaceHolder("Muted usernames, comma-separated")
 	ignoredEntry.SetText(strings.Join(cfg.Identity.IgnoredChatters, ", "))
 
-	// 2. Voice Packs & Voices
+	// 2. Audio Output & Voice Packs
+	dlgDevOptions, dlgDevMap, dlgSelectedDev := mw.enumerateDeviceOptions(cfg.Audio.OutputDeviceID)
+	dlgDeviceSel := widget.NewSelect(dlgDevOptions, nil)
+	dlgDeviceSel.SetSelected(dlgSelectedDev)
+	dlgDeviceRefreshBtn := mw.newTipBtn("Refresh", theme.ViewRefreshIcon(), "Refresh audio output device list", func() {
+		opts, m, sel := mw.enumerateDeviceOptions(dlgDevMap[dlgDeviceSel.Selected])
+		dlgDevMap = m
+		dlgDeviceSel.Options = opts
+		dlgDeviceSel.SetSelected(sel)
+		dlgDeviceSel.Refresh()
+	})
+
 	modelDir := tts.DefaultModelDir()
 	enabledSet := make(map[string]bool)
 	for _, m := range cfg.Audio.EffectiveEnabledModels() {
@@ -402,6 +413,7 @@ func (mw *MainWindow) showSettingsDialog() {
 		}
 		prevModels := slices.Clone(mw.Session.ConfigSnapshot().Audio.EffectiveEnabledModels())
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
+			c.Audio.OutputDeviceID = dlgDevMap[dlgDeviceSel.Selected]
 			c.Audio.EnabledModels = selectedModels
 		})
 		applyPacksBtn.Disable()
@@ -582,6 +594,8 @@ func (mw *MainWindow) showSettingsDialog() {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Voices & Voice Packs", container.NewVScroll(container.NewVBox(
+			container.NewBorder(nil, nil, widget.NewLabelWithStyle("Audio Output Device:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), dlgDeviceRefreshBtn, dlgDeviceSel),
+			widget.NewSeparator(),
 			widget.NewLabelWithStyle("Neural TTS Voice Model Packs (Shared with TownCrier):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			modelRows,
 			container.NewGridWithColumns(3, applyPacksBtn, checkPackUpdatesBtn, updatePacksBtn),
@@ -677,6 +691,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Identity.IgnoredChatters = parseCSVList(ignoredEntry.Text)
 			c.Identity.ChatterVoices = maps.Clone(chatterVoiceMap)
 
+			c.Audio.OutputDeviceID = dlgDevMap[dlgDeviceSel.Selected]
 			c.Audio.EnabledModels = selectedModels
 			if defVoiceID != "" {
 				c.Audio.DefaultVoice = defVoiceID
@@ -714,6 +729,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Accessibility.Hotkeys.PanicMute = strings.TrimSpace(hkPanicEntry.Text)
 		})
 		updated := mw.Session.ConfigSnapshot()
+		mw.refreshOutputDeviceSelect()
 		if mw.speakEmotesCk != nil && mw.speakEmotesCk.Checked != updated.Audio.SpeakEmotes {
 			mw.speakEmotesCk.SetChecked(updated.Audio.SpeakEmotes)
 		}

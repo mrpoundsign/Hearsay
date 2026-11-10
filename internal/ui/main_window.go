@@ -63,8 +63,9 @@ type MainWindow struct {
 	lineupsBox        *fyne.Container
 
 	// Right Pane: Transport & Unified Live Log
-	deviceSel    *widget.Select
-	masterVolSld *widget.Slider
+	deviceSel        *widget.Select
+	deviceRefreshBtn *TooltipButton
+	masterVolSld     *widget.Slider
 	masterVolLbl *widget.Label
 	speedSld     *widget.Slider
 	speedLbl     *widget.Label
@@ -150,7 +151,9 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	mw.nowSpeakingLbl = widget.NewLabelWithStyle(mw.lastStatusText, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
 	mw.nowSpeakingLbl.Truncation = fyne.TextTruncateEllipsis
 
-	mw.uiScaleSel = widget.NewSelect(UIScaleOptions(), func(selected string) {
+	mw.uiScaleSel = widget.NewSelect(UIScaleOptions(), nil)
+	mw.uiScaleSel.SetSelected(FormatUIScaleLabel(cfg.Accessibility.UIScale))
+	mw.uiScaleSel.OnChanged = func(selected string) {
 		mode := ParseUIScaleLabel(selected)
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Accessibility.UIScale = mode
@@ -158,11 +161,12 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 		sc := mw.Session.ConfigSnapshot()
 		ApplyUIScale(mw.App, sc.Accessibility.UIScale, sc.Accessibility.FontScale, sc.Accessibility.HighContrast)
 		mw.refreshLog()
-	})
-	mw.uiScaleSel.SetSelected(FormatUIScaleLabel(cfg.Accessibility.UIScale))
+	}
 
 	scaleOptions := []string{"100%", "125%", "150%", "175%"}
-	mw.fontScaleSel = widget.NewSelect(scaleOptions, func(selected string) {
+	mw.fontScaleSel = widget.NewSelect(scaleOptions, nil)
+	mw.fontScaleSel.SetSelected(formatScalePercent(cfg.Accessibility.FontScale))
+	mw.fontScaleSel.OnChanged = func(selected string) {
 		var scale float32 = 1.0
 		switch selected {
 		case "125%":
@@ -178,17 +182,17 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 		sc := mw.Session.ConfigSnapshot()
 		mw.App.Settings().SetTheme(NewHearsayTheme(sc.Accessibility.FontScale, sc.Accessibility.HighContrast))
 		mw.refreshLog()
-	})
-	mw.fontScaleSel.SetSelected(formatScalePercent(cfg.Accessibility.FontScale))
+	}
 
-	mw.highContrastCk = widget.NewCheck("High Contrast", func(checked bool) {
+	mw.highContrastCk = widget.NewCheck("High Contrast", nil)
+	mw.highContrastCk.SetChecked(cfg.Accessibility.HighContrast)
+	mw.highContrastCk.OnChanged = func(checked bool) {
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Accessibility.HighContrast = checked
 		})
 		sc := mw.Session.ConfigSnapshot()
 		mw.App.Settings().SetTheme(NewHearsayTheme(sc.Accessibility.FontScale, sc.Accessibility.HighContrast))
-	})
-	mw.highContrastCk.SetChecked(cfg.Accessibility.HighContrast)
+	}
 
 	mw.miniToggleBtn = mw.newTipBtn(
 		"Mini Player",
@@ -327,20 +331,22 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	logHeader := widget.NewLabelWithStyle("Unified Live Log", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	logHeader.Truncation = fyne.TextTruncateEllipsis
 
-	mw.speakEmotesCk = widget.NewCheck("Speak Emotes", func(checked bool) {
+	mw.speakEmotesCk = widget.NewCheck("Speak Emotes", nil)
+	mw.speakEmotesCk.SetChecked(cfg.Audio.SpeakEmotes)
+	mw.speakEmotesCk.OnChanged = func(checked bool) {
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Audio.SpeakEmotes = checked
 		})
-	})
-	mw.speakEmotesCk.SetChecked(cfg.Audio.SpeakEmotes)
+	}
 
-	mw.channelIconsCk = widget.NewCheck("Channel Icons", func(checked bool) {
+	mw.channelIconsCk = widget.NewCheck("Channel Icons", nil)
+	mw.channelIconsCk.SetChecked(cfg.Accessibility.ShowChannelIcons)
+	mw.channelIconsCk.OnChanged = func(checked bool) {
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Accessibility.ShowChannelIcons = checked
 		})
 		mw.refreshLog()
-	})
-	mw.channelIconsCk.SetChecked(cfg.Accessibility.ShowChannelIcons)
+	}
 
 	logHeaderRow := container.NewBorder(
 		nil, nil, nil,
@@ -374,9 +380,9 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 	mw.miniRoot = mw.buildMiniPlayerRoot()
 }
 
-func (mw *MainWindow) buildTransportWidgets(cfg *config.Config) {
+func (mw *MainWindow) enumerateDeviceOptions(targetDeviceID string) ([]string, map[string]string, string) {
 	devOptions := []string{"System Default"}
-	mw.deviceMap["System Default"] = ""
+	devMap := map[string]string{"System Default": ""}
 	selectedDevLabel := "System Default"
 
 	if mw.deviceEnumerator != nil {
@@ -387,21 +393,59 @@ func (mw *MainWindow) buildTransportWidgets(cfg *config.Config) {
 					label += " (Default)"
 				}
 				devOptions = append(devOptions, label)
-				mw.deviceMap[label] = d.ID
-				if cfg.Audio.OutputDeviceID != "" && d.ID == cfg.Audio.OutputDeviceID {
+				devMap[label] = d.ID
+				if targetDeviceID != "" && audio.MatchHexDeviceIDStrings(d.ID, targetDeviceID) {
 					selectedDevLabel = label
 				}
 			}
 		}
 	}
+	return devOptions, devMap, selectedDevLabel
+}
 
-	mw.deviceSel = widget.NewSelect(devOptions, func(selected string) {
+func (mw *MainWindow) refreshOutputDeviceSelect() {
+	if mw.deviceSel == nil {
+		return
+	}
+	cfg := mw.Session.ConfigSnapshot()
+	devOptions, devMap, selectedLabel := mw.enumerateDeviceOptions(cfg.Audio.OutputDeviceID)
+	mw.mu.Lock()
+	mw.deviceMap = devMap
+	mw.mu.Unlock()
+
+	prevCb := mw.deviceSel.OnChanged
+	mw.deviceSel.OnChanged = nil
+	mw.deviceSel.Options = devOptions
+	mw.deviceSel.SetSelected(selectedLabel)
+	mw.deviceSel.Refresh()
+	mw.deviceSel.OnChanged = prevCb
+}
+
+func (mw *MainWindow) buildTransportWidgets(cfg *config.Config) {
+	devOptions, devMap, selectedDevLabel := mw.enumerateDeviceOptions(cfg.Audio.OutputDeviceID)
+	mw.mu.Lock()
+	mw.deviceMap = devMap
+	mw.mu.Unlock()
+
+	mw.deviceSel = widget.NewSelect(devOptions, nil)
+	mw.deviceSel.SetSelected(selectedDevLabel)
+	mw.deviceSel.OnChanged = func(selected string) {
+		mw.mu.Lock()
 		devID := mw.deviceMap[selected]
+		mw.mu.Unlock()
 		_ = mw.Session.UpdateConfig(func(c *config.Config) {
 			c.Audio.OutputDeviceID = devID
 		})
-	})
-	mw.deviceSel.SetSelected(selectedDevLabel)
+	}
+
+	mw.deviceRefreshBtn = mw.newTipBtn(
+		"",
+		theme.ViewRefreshIcon(),
+		"Refresh audio output device list",
+		func() {
+			mw.refreshOutputDeviceSelect()
+		},
+	)
 
 	mw.masterVolLbl = widget.NewLabel(fmt.Sprintf("Vol: %.0f%%", cfg.Audio.MasterVolume*100))
 	mw.masterVolSld = widget.NewSlider(0, 200)
@@ -470,7 +514,7 @@ func (mw *MainWindow) buildTransportWidgets(cfg *config.Config) {
 }
 
 func (mw *MainWindow) buildTransportBar() fyne.CanvasObject {
-	outputRow := container.NewBorder(nil, nil, widget.NewLabel("Output:"), nil, mw.deviceSel)
+	outputRow := container.NewBorder(nil, nil, widget.NewLabel("Output:"), mw.deviceRefreshBtn, mw.deviceSel)
 	slidersRow := container.NewGridWithColumns(2,
 		container.NewBorder(nil, nil, mw.masterVolLbl, nil, mw.masterVolSld),
 		container.NewBorder(nil, nil, mw.speedLbl, nil, mw.speedSld),

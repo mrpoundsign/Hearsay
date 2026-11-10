@@ -18,7 +18,7 @@ import (
 var payloadFS embed.FS
 
 var (
-	AppVersion = "0.0.2"
+	AppVersion = "0.0.3"
 )
 
 func main() {

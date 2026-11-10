@@ -10,7 +10,7 @@ import (
 )
 
 // AppVersion is injected at build time via -ldflags.
-var AppVersion = "v0.0.2"
+var AppVersion = "v0.0.3"
 
 // UI scale mode constants and display labels.
 const (

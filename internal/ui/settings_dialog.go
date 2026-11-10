@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -171,14 +173,25 @@ func (mw *MainWindow) showSettingsDialog() {
 
 	modelChecks := make(map[string]*widget.Check, len(tts.AllModelFamilies))
 	modelRows := container.NewVBox()
+	modelUpdateStatuses := tts.InspectAllLocalModelStatuses(modelDir, cfg.Audio.UseGPU)
 
 	formatPackLabel := func(spec tts.ModelFamilySpec) string {
+		st, hasSt := modelUpdateStatuses[spec.ID]
+		if !hasSt {
+			st = tts.InspectLocalModelStatus(modelDir, spec.ID, cfg.Audio.UseGPU)
+		}
 		installed := tts.IsModelFamilyInstalled(modelDir, spec.ID, cfg.Audio.UseGPU)
 		if spec.ID == tts.ModelKokoro || spec.ID == tts.ModelKokoroIntl {
 			installed = tts.IsKokoroInstalledForMode(modelDir, cfg.Audio.UseGPU)
 		}
 		status := fmt.Sprintf("Download ~%d MB", spec.DownloadSizeMB)
-		if installed {
+		if st.UpdateAvailable {
+			if spec.ID == tts.ModelKokoroIntl {
+				status = "⬆ Update Available (Shares Kokoro)"
+			} else {
+				status = fmt.Sprintf("⬆ Update Available (~%d MB)", spec.DownloadSizeMB)
+			}
+		} else if installed {
 			status = "Installed"
 		}
 		return fmt.Sprintf("%s [%s]", spec.Name, status)
@@ -267,6 +280,110 @@ func (mw *MainWindow) showSettingsDialog() {
 
 	disabledChatterVoices := slices.Clone(cfg.Audio.DisabledChatterVoices)
 	permittedVoicesLbl := widget.NewLabel(formatPermittedVoicesSummary(cfg.Audio.EffectiveEnabledModels(), disabledChatterVoices))
+
+	checkPackUpdatesBtn := mw.newTipBtn("Check for Voice Updates", theme.ViewRefreshIcon(), "Check GitHub Releases for updated neural TTS voice model weights", nil)
+	updatePacksBtn := mw.newTipBtn("Update Voice Models", theme.UploadIcon(), "Download and install updated voice model packs", nil)
+	updatePacksBtn.Importance = widget.HighImportance
+
+	syncUpdateBtnState := func() {
+		outdated := tts.OutdatedModelFamilies(modelUpdateStatuses)
+		if len(outdated) > 0 {
+			updatePacksBtn.SetText(fmt.Sprintf("Update Voice Models (%d)", len(outdated)))
+			updatePacksBtn.Enable()
+		} else {
+			updatePacksBtn.SetText("Update Voice Models")
+			updatePacksBtn.Disable()
+		}
+	}
+	syncUpdateBtnState()
+
+	checkPackUpdatesBtn.OnTapped = func() {
+		checkPackUpdatesBtn.Disable()
+		packStatusLbl.SetText("Checking GitHub Releases for voice model updates...")
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			statuses, err := tts.CheckModelUpdates(ctx, modelDir, mw.Session.ConfigSnapshot().Audio.UseGPU)
+			fyne.Do(func() {
+				checkPackUpdatesBtn.Enable()
+				modelUpdateStatuses = statuses
+				outdated := tts.OutdatedModelFamilies(statuses)
+				for _, spec := range tts.AllModelFamilies {
+					if c, ok := modelChecks[spec.ID]; ok {
+						c.SetText(formatPackLabel(spec))
+						c.Refresh()
+					}
+				}
+				syncUpdateBtnState()
+				if err != nil && len(outdated) == 0 {
+					packStatusLbl.SetText("Could not check remote voice updates: " + err.Error())
+					return
+				}
+				if len(outdated) > 0 {
+					names := make([]string, 0, len(outdated))
+					for _, id := range outdated {
+						if spec, ok := tts.ModelSpecByID(id); ok {
+							names = append(names, spec.ShortName)
+						} else {
+							names = append(names, id)
+						}
+					}
+					packStatusLbl.SetText(fmt.Sprintf("⬆ %d voice model update(s) available: %s", len(outdated), strings.Join(names, ", ")))
+				} else {
+					packStatusLbl.SetText("✓ All installed voice model packs are up to date.")
+				}
+			})
+		}()
+	}
+
+	updatePacksBtn.OnTapped = func() {
+		outdated := tts.OutdatedModelFamilies(modelUpdateStatuses)
+		if len(outdated) == 0 {
+			return
+		}
+		updatePacksBtn.Disable()
+		checkPackUpdatesBtn.Disable()
+		packProgress.SetValue(0)
+		packProgress.Show()
+		packStatusLbl.SetText("Updating outdated voice packs...")
+
+		go func() {
+			err := mw.Session.UpdateModelFamilies(modelDir, outdated, func(modelName string, pct float64) {
+				fyne.Do(func() {
+					packStatusLbl.SetText(fmt.Sprintf("Updating %s (%.0f%%)...", modelName, pct*100))
+					packProgress.SetValue(pct)
+				})
+			})
+			fyne.Do(func() {
+				checkPackUpdatesBtn.Enable()
+				packProgress.Hide()
+				if err != nil {
+					syncUpdateBtnState()
+					packStatusLbl.SetText("Error updating voice packs: " + err.Error())
+					return
+				}
+				updatedCfg := mw.Session.ConfigSnapshot()
+				modelUpdateStatuses = tts.InspectAllLocalModelStatuses(modelDir, updatedCfg.Audio.UseGPU)
+				for _, spec := range tts.AllModelFamilies {
+					if c, ok := modelChecks[spec.ID]; ok {
+						c.SetText(formatPackLabel(spec))
+						c.Refresh()
+					}
+				}
+				syncUpdateBtnState()
+				voiceLabels, labelToVoiceID = availableVoiceOptions(updatedCfg, mw.Session.Engine())
+				defaultVoiceSel.Options = voiceLabels
+				defaultVoiceSel.Refresh()
+				chatterAssignVoiceSel.Options = voiceLabels
+				if len(voiceLabels) > 0 {
+					chatterAssignVoiceSel.SetSelected(voiceLabels[0])
+				}
+				chatterAssignVoiceSel.Refresh()
+				permittedVoicesLbl.SetText(formatPermittedVoicesSummary(updatedCfg.Audio.EffectiveEnabledModels(), disabledChatterVoices))
+				packStatusLbl.SetText("✓ Voice model packs updated to latest release!")
+			})
+		}()
+	}
 
 	applyPacksBtn := mw.newTipBtn("Download & Load Selected Voice Packs", theme.DownloadIcon(), "Download any missing model packs and hot-reload the TTS engine", nil)
 	applyPacksBtn.Importance = widget.HighImportance
@@ -467,7 +584,7 @@ func (mw *MainWindow) showSettingsDialog() {
 		container.NewTabItem("Voices & Voice Packs", container.NewVScroll(container.NewVBox(
 			widget.NewLabelWithStyle("Neural TTS Voice Model Packs (Shared with TownCrier):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			modelRows,
-			applyPacksBtn,
+			container.NewGridWithColumns(3, applyPacksBtn, checkPackUpdatesBtn, updatePacksBtn),
 			packProgress,
 			packStatusLbl,
 			widget.NewSeparator(),

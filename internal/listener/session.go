@@ -1160,6 +1160,54 @@ func (s *Session) ReloadEngine(modelDir string, onProgress func(modelName string
 	return nil
 }
 
+// UpdateModelFamilies force-updates the specified TTS model families on disk and reloads the active MultiEngine.
+func (s *Session) UpdateModelFamilies(modelDir string, families []string, onProgress func(modelName string, pct float64)) error {
+	if strings.TrimSpace(modelDir) == "" {
+		modelDir = tts.DefaultModelDir()
+	}
+	cfg := s.ConfigSnapshot()
+	enabledModels := cfg.Audio.EffectiveEnabledModels()
+
+	// Detach and close the active engine first so open ONNX files can be overwritten on Windows
+	s.mu.Lock()
+	oldEng := s.engine
+	s.engine = nil
+	s.mu.Unlock()
+	if oldEng != nil {
+		_ = oldEng.Close()
+	}
+	tts.ReclaimOSMemory()
+
+	for _, fam := range families {
+		spec, _ := tts.ModelSpecByID(fam)
+		name := spec.ShortName
+		if name == "" {
+			name = fam
+		}
+		if err := tts.ForceUpdateModelFamily(modelDir, fam, cfg.Audio.UseGPU, func(cur, total int64) {
+			if onProgress != nil && total > 0 {
+				onProgress(name, float64(cur)/float64(total))
+			}
+		}); err != nil {
+			return err
+		}
+	}
+
+	threads := cfg.Audio.NumThreads
+	if threads <= 0 {
+		threads = 4
+	}
+	newEng, err := tts.NewMultiEngine(modelDir, enabledModels, threads, cfg.Audio.UseGPU, tts.DefaultMaxClauseWords, 0)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	s.engine = newEng
+	s.mu.Unlock()
+	return nil
+}
+
 func (s *Session) notifyLogUpdated() {
 	s.mu.RLock()
 	fn := s.onLogUpdated

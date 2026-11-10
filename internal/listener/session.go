@@ -129,6 +129,7 @@ type Session struct {
 	lastSpoken    *LogEntry
 	nowSpeaking   *LogEntry
 	paused        atomic.Bool
+	panicked      atomic.Bool
 	closed        atomic.Bool
 	speechCh      chan speechItem
 	wakeCh        chan struct{}
@@ -597,6 +598,9 @@ func (s *Session) handleSlotStatusChange(slotID string, status string, detail st
 }
 
 func (s *Session) playEarconAsync(kind audio.EarconKind, pan float64) {
+	if s.panicked.Load() {
+		return
+	}
 	s.mu.RLock()
 	p := s.player
 	s.mu.RUnlock()
@@ -716,6 +720,28 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		return
 	}
 
+	if s.panicked.Load() {
+		s.appendLogEntry(LogEntry{
+			ID:         entryID,
+			SlotID:     slotCfg.SlotID(),
+			Platform:   slotCfg.Platform,
+			Channel:    slotCfg.EffectiveLabel(),
+			UserName:   speaker,
+			UserColor:  userColor,
+			Text:       ev.Text,
+			SpokenText: cleanedText,
+			VoiceID:    voiceID,
+			Pan:        slotCfg.Pan,
+			Volume:     slotCfg.Volume,
+			Status:     StatusSkipped,
+			SkipReason: "panic_muted",
+			IsMention:  eval.IsMention,
+			IsPriority: eval.IsPriority,
+			Timestamp:  ev.Timestamp,
+		})
+		return
+	}
+
 	spokenText, nextLastSlot, nextSpeakerKey, coalesced := FormatSpokenTextWithCoalesce(*ev, cleanedText, slotCfg, cfgSnap, activeCount, lastSlot, lastSpeaker, lastAt, now)
 	s.mu.Lock()
 	s.lastSpokenSlotID = nextLastSlot
@@ -805,6 +831,11 @@ func (s *Session) processSpeechItem(item speechItem) {
 		}
 	}
 
+	if s.panicked.Load() {
+		s.updateLogStatus(item.entryID, StatusSkipped, "panic_muted")
+		return
+	}
+
 	// Staleness protection: drop non-priority messages older than 30s during bursts
 	if !item.isPriority && time.Since(item.enqueuedAt) > StaleMessageTTL {
 		s.updateLogStatus(item.entryID, StatusSkipped, "stale_ttl")
@@ -849,6 +880,14 @@ func (s *Session) processSpeechItem(item speechItem) {
 
 	if eng != nil && p != nil && strings.TrimSpace(item.spokenText) != "" {
 		samples, sampleRate, err := eng.Synthesize(item.spokenText, item.voiceID, float32(speed))
+		if s.panicked.Load() {
+			s.updateLogStatus(item.entryID, StatusSkipped, "panic_muted")
+			s.mu.Lock()
+			s.nowSpeaking = nil
+			s.mu.Unlock()
+			s.notifyNowSpeaking(nil)
+			return
+		}
 		if err == nil && len(samples) > 0 {
 			_ = p.PlayWithOptions(samples, sampleRate, audio.PlayOptions{
 				Gain: float32(item.volume),
@@ -957,18 +996,50 @@ func (s *Session) ClearQueue() {
 	}
 }
 
-// PanicMute immediately halts audio output (<50ms) and flushes the speech queue.
-func (s *Session) PanicMute() {
+// IsPanicked reports whether Emergency Panic Mute mode is currently latched active.
+func (s *Session) IsPanicked() bool {
+	return s.panicked.Load()
+}
+
+// SetPanicked latches or unlatches Emergency Panic Mute mode.
+func (s *Session) SetPanicked(panicked bool) {
+	s.panicked.Store(panicked)
 	s.mu.Lock()
 	p := s.player
-	s.lastSpeakerKey = ""
-	s.lastSpokenAt = time.Time{}
-	s.mu.Unlock()
-	if p != nil {
-		p.PanicStop()
-		p.ResetPanic()
+	if panicked {
+		s.lastSpeakerKey = ""
+		s.lastSpokenAt = time.Time{}
+		s.nowSpeaking = nil
 	}
-	s.ClearQueue()
+	s.mu.Unlock()
+
+	if panicked {
+		if p != nil {
+			p.PanicStop()
+		}
+		s.ClearQueue()
+		s.notifyNowSpeaking(nil)
+	} else {
+		if p != nil {
+			p.ResetPanic()
+		}
+		select {
+		case s.wakeCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// TogglePanic toggles Emergency Panic Mute mode on or off and returns the new panicked state.
+func (s *Session) TogglePanic() bool {
+	next := !s.panicked.Load()
+	s.SetPanicked(next)
+	return next
+}
+
+// PanicMute immediately halts audio output (<50ms), flushes the speech queue, and latches Panic Mute mode.
+func (s *Session) PanicMute() {
+	s.SetPanicked(true)
 }
 
 // ReplayLast re-enqueues the most recently spoken message for immediate playback.

@@ -110,6 +110,19 @@ func TestMainWindowQuickTuneMiniPlayerAndTheme(t *testing.T) {
 	if got := sess.ConfigSnapshot().Accessibility.UIScale; got != "1.25" {
 		t.Fatalf("expected UIScale=1.25 after selecting 125%%, got %q", got)
 	}
+
+	// Verify Panic Mute button latches and unlatches visual state
+	if sess.IsPanicked() {
+		t.Fatalf("expected initial IsPanicked() == false")
+	}
+	fynetest.Tap(mw.panicBtn)
+	if !sess.IsPanicked() || mw.panicBtn.Text != "🚨 PANIC MUTED (Unmute)" {
+		t.Fatalf("expected latched panic state and button label '🚨 PANIC MUTED (Unmute)', got panicked=%v text=%q", sess.IsPanicked(), mw.panicBtn.Text)
+	}
+	fynetest.Tap(mw.panicBtn)
+	if sess.IsPanicked() || mw.panicBtn.Text != "PANIC MUTE" {
+		t.Fatalf("expected unlatched panic state and button label 'PANIC MUTE', got panicked=%v text=%q", sess.IsPanicked(), mw.panicBtn.Text)
+	}
 }
 
 func TestMainWindowConcurrentUpdatesAndSlotControls(t *testing.T) {

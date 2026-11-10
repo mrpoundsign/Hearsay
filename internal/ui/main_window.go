@@ -46,6 +46,7 @@ type MainWindow struct {
 	channelIconsCk *widget.Check
 	miniToggleBtn  *TooltipButton
 	panicBtn       *TooltipButton
+	miniPanicBtn   *TooltipButton
 	tooltipLayer   *fyne.Container
 	tooltipBubble  *fyne.Container
 	tooltipText    *canvas.Text
@@ -131,8 +132,7 @@ func NewMainWindow(app fyne.App, session *listener.Session, devEnum func() ([]au
 
 	w.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
 		if ev.Name == fyne.KeyEscape {
-			mw.Session.PanicMute()
-			mw.updateNowSpeaking(nil)
+			mw.triggerTogglePanic()
 		}
 	})
 
@@ -217,8 +217,7 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 		theme.VolumeMuteIcon(),
 		"Emergency Mute: Immediately stop audio and flush speech queue (Ctrl+Shift+M / Esc)",
 		func() {
-			mw.Session.PanicMute()
-			mw.updateNowSpeaking(nil)
+			mw.triggerTogglePanic()
 		},
 	)
 	mw.panicBtn.Importance = widget.DangerImportance
@@ -691,9 +690,10 @@ func (mw *MainWindow) buildMiniPlayerRoot() fyne.CanvasObject {
 		mw.Session.ReplayLast()
 	})
 	miniPanicBtn := mw.newTipBtn("MUTE", theme.VolumeMuteIcon(), "Emergency Mute & clear speech queue", func() {
-		mw.Session.PanicMute()
+		mw.triggerTogglePanic()
 	})
 	miniPanicBtn.Importance = widget.DangerImportance
+	mw.miniPanicBtn = miniPanicBtn
 
 	topBar := container.NewBorder(
 		nil, nil,
@@ -1003,12 +1003,68 @@ func (mw *MainWindow) refreshLog() {
 	}
 }
 
+func (mw *MainWindow) triggerTogglePanic() {
+	panicked := mw.Session.TogglePanic()
+	mw.syncPanicUI(panicked)
+}
+
+func (mw *MainWindow) syncPanicUI(panicked bool) {
+	mw.uiMu.Lock()
+	defer mw.uiMu.Unlock()
+
+	hk := mw.Session.ConfigSnapshot().Accessibility.Hotkeys.PanicMute
+	if hk == "" {
+		hk = "Ctrl+Shift+M"
+	}
+	if mw.panicBtn != nil {
+		if panicked {
+			mw.panicBtn.SetText("🚨 PANIC MUTED (Unmute)")
+			mw.panicBtn.SetIcon(theme.VolumeUpIcon())
+			mw.panicBtn.Importance = widget.WarningImportance
+			mw.panicBtn.SetTooltip(fmt.Sprintf("Panic Mute Active — Click or press %s / Esc to unmute and resume", hk))
+		} else {
+			mw.panicBtn.SetText("PANIC MUTE")
+			mw.panicBtn.SetIcon(theme.VolumeMuteIcon())
+			mw.panicBtn.Importance = widget.DangerImportance
+			mw.panicBtn.SetTooltip(fmt.Sprintf("Emergency Mute: Immediately stop audio and flush speech queue (%s / Esc)", hk))
+		}
+		mw.panicBtn.Refresh()
+	}
+	if mw.miniPanicBtn != nil {
+		if panicked {
+			mw.miniPanicBtn.SetText("UNMUTE")
+			mw.miniPanicBtn.SetIcon(theme.VolumeUpIcon())
+			mw.miniPanicBtn.Importance = widget.WarningImportance
+		} else {
+			mw.miniPanicBtn.SetText("MUTE")
+			mw.miniPanicBtn.SetIcon(theme.VolumeMuteIcon())
+			mw.miniPanicBtn.Importance = widget.DangerImportance
+		}
+		mw.miniPanicBtn.Refresh()
+	}
+	if panicked {
+		mw.lastStatusText = fmt.Sprintf("🚨 PANIC MUTE ACTIVE — Speech halted & queue cleared. Click Unmute or press %s / Esc to resume.", hk)
+		mw.nowSpeakingLbl.SetText(mw.lastStatusText)
+	} else {
+		mw.lastStatusText = "Idle — Listening for chat..."
+		mw.nowSpeakingLbl.SetText(mw.lastStatusText)
+	}
+}
+
 func (mw *MainWindow) updateNowSpeaking(entry *listener.LogEntry) {
 	mw.uiMu.Lock()
 	defer mw.uiMu.Unlock()
 
 	if entry == nil {
-		mw.lastStatusText = "Idle — Listening for chat..."
+		if mw.Session.IsPanicked() {
+			hk := mw.Session.ConfigSnapshot().Accessibility.Hotkeys.PanicMute
+			if hk == "" {
+				hk = "Ctrl+Shift+M"
+			}
+			mw.lastStatusText = fmt.Sprintf("🚨 PANIC MUTE ACTIVE — Speech halted & queue cleared. Click Unmute or press %s / Esc to resume.", hk)
+		} else {
+			mw.lastStatusText = "Idle — Listening for chat..."
+		}
 		mw.nowSpeakingLbl.SetText(mw.lastStatusText)
 		return
 	}
@@ -1045,8 +1101,7 @@ func (mw *MainWindow) registerHotkeys(hk config.HotkeyConfig) {
 
 	mw.hkPanic = NewGlobalHotkeyManagerWithID(HotkeyIDPanicMute, func() {
 		fyne.Do(func() {
-			mw.Session.PanicMute()
-			mw.updateNowSpeaking(nil)
+			mw.triggerTogglePanic()
 		})
 	})
 	_ = mw.hkPanic.Register(hk.PanicMute)
@@ -1308,6 +1363,8 @@ func formatSkipReason(reason string) string {
 		return "[SKIP: Spam]"
 	case "slot_muted":
 		return "[SKIP: Muted]"
+	case "panic_muted":
+		return "[SKIP: Panic]"
 	case "muted_chatter":
 		return "[SKIP: Ignored]"
 	case "chatter_cooldown":

@@ -651,9 +651,16 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		ev.Timestamp = time.Now()
 	}
 
-	// 1. Known Bot Matcher check
-	if s.botMatcher != nil && s.botMatcher.ShouldIgnore(ev, s.botConfig) {
-		return
+	// 1. Known Bot Matcher check (unless user is explicitly in PriorityChatters)
+	if s.botMatcher != nil && cfgSnap.Crowd.IgnoreKnownBots {
+		plat := strings.ToLower(strings.TrimSpace(ev.Platform))
+		uLogin := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ev.UserName)), "@")
+		uDisp := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ev.DisplayName)), "@")
+		isPriority := (uLogin != "" && matchesPlatformIdentity(plat, uLogin, cfgSnap.Identity.PriorityChatters)) ||
+			(uDisp != "" && matchesPlatformIdentity(plat, uDisp, cfgSnap.Identity.PriorityChatters))
+		if !isPriority && s.botMatcher.ShouldIgnore(ev, s.botConfig) {
+			return
+		}
 	}
 
 	// 2. Clean & sanitize text
@@ -662,6 +669,8 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		SpeakEmotes:       cfgSnap.Audio.SpeakEmotes,
 		DeduplicateEmotes: cfgSnap.Audio.DeduplicateEmotes,
 		MaxDuplicateWords: cfgSnap.Audio.MaxDuplicateWords,
+		StripZalgo:        cfgSnap.Audio.StripZalgo,
+		StripASCIIArt:     cfgSnap.Audio.StripASCIIArt,
 	})
 
 	// 3. Optional Translation

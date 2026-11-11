@@ -545,6 +545,12 @@ func (mw *MainWindow) showSettingsDialog() {
 	dupWordsSel := widget.NewSelect(duplicateWordsOptions, nil)
 	dupWordsSel.SetSelected(dupWordsToLabel(cfg.Audio.MaxDuplicateWords))
 
+	stripZalgoCk := widget.NewCheck("Strip Zalgo combining marks (cap stacked diacritics at 2 per character)", nil)
+	stripZalgoCk.SetChecked(cfg.Audio.StripZalgo)
+
+	stripASCIIArtCk := widget.NewCheck("Strip Braille, box-drawing & ASCII symbol art floods", nil)
+	stripASCIIArtCk.SetChecked(cfg.Audio.StripASCIIArt)
+
 	earconsCk := widget.NewCheck("Play spatial earcons (Stream Live/Offline & @Mention chimes)", nil)
 	earconsCk.SetChecked(cfg.Audio.EarconsEnabled)
 
@@ -557,8 +563,30 @@ func (mw *MainWindow) showSettingsDialog() {
 	pacingEntry := widget.NewEntry()
 	pacingEntry.SetText(strconv.Itoa(cfg.Crowd.GlobalPacingMs))
 
+	ignoreKnownBotsCk := widget.NewCheck("Ignore known stream bots (Nightbot, StreamElements, Fossabot, etc.)", nil)
+	ignoreKnownBotsCk.SetChecked(cfg.Crowd.IgnoreKnownBots)
+
+	botCmdPrefixesEntry := widget.NewEntry()
+	botCmdPrefixesEntry.SetPlaceHolder("!")
+	botCmdPrefixesEntry.SetText(strings.Join(cfg.Crowd.EffectiveBotCommandPrefixes(), ", "))
+
+	ignoreBotCmdsCk := widget.NewCheck("Ignore bot commands starting with prefix (e.g. !commands, !lurk):", func(b bool) {
+		if b {
+			botCmdPrefixesEntry.Enable()
+		} else {
+			botCmdPrefixesEntry.Disable()
+		}
+	})
+	ignoreBotCmdsCk.SetChecked(cfg.Crowd.IgnoreBotCommands)
+	if !cfg.Crowd.IgnoreBotCommands {
+		botCmdPrefixesEntry.Disable()
+	}
+
 	skipSpamCk := widget.NewCheck("Skip 1-word hype spam (LUL, GG, W, F, KEKW)", nil)
 	skipSpamCk.SetChecked(cfg.Crowd.SkipShortSpam)
+
+	dedupeCopypastaCk := widget.NewCheck("Suppress multi-user copypasta waves (30s sliding window)", nil)
+	dedupeCopypastaCk.SetChecked(cfg.Crowd.DeduplicateCopypasta)
 
 	speakNoTextCk := widget.NewCheck("Speak no-text events (follows, shares, gift streaks)", nil)
 	speakNoTextCk.SetChecked(cfg.Crowd.SpeakNoTextEvents)
@@ -621,11 +649,16 @@ func (mw *MainWindow) showSettingsDialog() {
 			speakEmotesCk,
 			dedupeEmotesCk,
 			container.NewBorder(nil, nil, widget.NewLabel("Max Consecutive Duplicate Words:"), nil, dupWordsSel),
+			stripZalgoCk,
+			stripASCIIArtCk,
 			earconsCk,
 			showChannelIconsCk,
 			widget.NewSeparator(),
 			widget.NewLabelWithStyle("Crowd Control & Pacing:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			ignoreKnownBotsCk,
+			container.NewBorder(nil, nil, ignoreBotCmdsCk, nil, botCmdPrefixesEntry),
 			skipSpamCk,
+			dedupeCopypastaCk,
 			speakNoTextCk,
 			container.NewGridWithColumns(2,
 				widget.NewLabel("Per-Chatter Cooldown (sec, 0=off):"), cooldownEntry,
@@ -707,6 +740,8 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Audio.SpeakEmotes = speakEmotesCk.Checked
 			c.Audio.DeduplicateEmotes = dedupeEmotesCk.Checked
 			c.Audio.MaxDuplicateWords = labelToDupWords(dupWordsSel.Selected)
+			c.Audio.StripZalgo = stripZalgoCk.Checked
+			c.Audio.StripASCIIArt = stripASCIIArtCk.Checked
 			c.Audio.EarconsEnabled = earconsCk.Checked
 
 			c.Accessibility.ShowChannelIcons = showChannelIconsCk.Checked
@@ -717,7 +752,15 @@ func (mw *MainWindow) showSettingsDialog() {
 			if pg, err := strconv.Atoi(strings.TrimSpace(pacingEntry.Text)); err == nil && pg >= 0 {
 				c.Crowd.GlobalPacingMs = pg
 			}
+			c.Crowd.IgnoreKnownBots = ignoreKnownBotsCk.Checked
+			c.Crowd.IgnoreBotCommands = ignoreBotCmdsCk.Checked
+			if prefixes := parseCSVList(botCmdPrefixesEntry.Text); len(prefixes) > 0 {
+				c.Crowd.BotCommandPrefixes = prefixes
+			} else {
+				c.Crowd.BotCommandPrefixes = []string{"!"}
+			}
 			c.Crowd.SkipShortSpam = skipSpamCk.Checked
+			c.Crowd.DeduplicateCopypasta = dedupeCopypastaCk.Checked
 			c.Crowd.SpeakNoTextEvents = speakNoTextCk.Checked
 
 			c.Translation.Enabled = transEnabledCk.Checked

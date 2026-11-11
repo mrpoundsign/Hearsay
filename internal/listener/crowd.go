@@ -34,12 +34,14 @@ type CrowdController struct {
 	mu                  sync.Mutex
 	lastSpokenByChatter map[string]time.Time
 	lastSpokenGlobal    time.Time
+	copypasta           *chat.CopypastaFilter
 }
 
 // NewCrowdController creates a new CrowdController instance.
 func NewCrowdController() *CrowdController {
 	return &CrowdController{
 		lastSpokenByChatter: make(map[string]time.Time),
+		copypasta:           chat.NewCopypastaFilter(),
 	}
 }
 
@@ -95,6 +97,17 @@ func (cc *CrowdController) Evaluate(ev chat.Event, cleanedText string, slot conf
 		return CrowdEvalResult{Allow: false, Reason: "empty_message"}
 	}
 
+	// 3b. Bot commands check (e.g. !commands, !lurk, !uptime)
+	if cfg.Crowd.IgnoreBotCommands && (ev.Kind == "" || ev.Kind == chat.EventKindMessage) {
+		rawTrimmed := strings.ToLower(strings.TrimSpace(ev.Text))
+		for _, p := range cfg.Crowd.EffectiveBotCommandPrefixes() {
+			pLower := strings.ToLower(strings.TrimSpace(p))
+			if pLower != "" && strings.HasPrefix(rawTrimmed, pLower) {
+				return CrowdEvalResult{Allow: false, Reason: "bot_command"}
+			}
+		}
+	}
+
 	// 4. Detect @mention or reply to viewer's configured username(s) on this platform
 	isMention := matchesMyUsernames(plat, ev, cfg.Identity.MyUsernames)
 	chanClean := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(slot.Channel)), "@")
@@ -145,6 +158,13 @@ func (cc *CrowdController) Evaluate(ev chat.Event, cleanedText string, slot conf
 	// 5. Minimum quality / short hype-spam gate
 	if cfg.Crowd.SkipShortSpam && IsShortHypeSpam(trimmedText) {
 		return CrowdEvalResult{Allow: false, Reason: "short_hype_spam"}
+	}
+
+	// 5b. Sliding-window multi-user copypasta deduplication
+	if cfg.Crowd.DeduplicateCopypasta && cc.copypasta != nil {
+		if cc.copypasta.IsDuplicate(slot.SlotID(), trimmedText, chat.DefaultCopypastaWindowSeconds*time.Second, now) {
+			return CrowdEvalResult{Allow: false, Reason: "copypasta"}
+		}
 	}
 
 	// 6. Per-chatter cooldown & global pacing

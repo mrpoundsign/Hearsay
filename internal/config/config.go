@@ -49,10 +49,12 @@ type AudioConfig struct {
 	SpeakNames           bool     `json:"speak_names"`
 	NaturalizeNames      bool     `json:"naturalize_names"`
 	CoalesceSeconds      int      `json:"coalesce_seconds"`
-	SpeakEmotes          bool     `json:"speak_emotes"`
-	DeduplicateEmotes    bool     `json:"deduplicate_emotes"`
-	MaxDuplicateWords    int      `json:"max_duplicate_words"`
-	EarconsEnabled       bool     `json:"earcons_enabled"`
+	SpeakEmotes           bool     `json:"speak_emotes"`
+	DeduplicateEmotes     bool     `json:"deduplicate_emotes"`
+	MaxDuplicateWords     int      `json:"max_duplicate_words"`
+	StripZalgo            bool     `json:"strip_zalgo"`
+	StripASCIIArt         bool     `json:"strip_ascii_art"`
+	EarconsEnabled        bool     `json:"earcons_enabled"`
 }
 
 // EffectiveEnabledModels returns a non-empty list of enabled TTS model families.
@@ -73,11 +75,30 @@ type IdentityConfig struct {
 
 // CrowdConfig configures global crowd control and high-velocity chat filtering.
 type CrowdConfig struct {
-	DefaultFilterMode  string `json:"default_filter_mode"`
-	ChatterCooldownSec int    `json:"chatter_cooldown_sec"`
-	GlobalPacingMs     int    `json:"global_pacing_ms"`
-	SkipShortSpam      bool   `json:"skip_short_spam"`
-	SpeakNoTextEvents  bool   `json:"speak_no_text_events"`
+	DefaultFilterMode    string   `json:"default_filter_mode"`
+	ChatterCooldownSec   int      `json:"chatter_cooldown_sec"`
+	GlobalPacingMs       int      `json:"global_pacing_ms"`
+	IgnoreKnownBots      bool     `json:"ignore_known_bots"`
+	IgnoreBotCommands    bool     `json:"ignore_bot_commands"`
+	BotCommandPrefixes   []string `json:"bot_command_prefixes,omitempty"`
+	SkipShortSpam        bool     `json:"skip_short_spam"`
+	DeduplicateCopypasta bool     `json:"deduplicate_copypasta"`
+	SpeakNoTextEvents    bool     `json:"speak_no_text_events"`
+}
+
+// EffectiveBotCommandPrefixes returns the configured bot command prefixes, defaulting to ["!"].
+func (c CrowdConfig) EffectiveBotCommandPrefixes() []string {
+	var out []string
+	for _, p := range c.BotCommandPrefixes {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{"!"}
+	}
+	return out
 }
 
 // AccessibilityConfig configures UI scaling, high-contrast mode, mini player, and global hotkeys.
@@ -172,6 +193,8 @@ func DefaultConfig() *Config {
 			SpeakEmotes:          false,
 			DeduplicateEmotes:    true,
 			MaxDuplicateWords:    2,
+			StripZalgo:           true,
+			StripASCIIArt:        true,
 			EarconsEnabled:       true,
 		},
 		Identity: IdentityConfig{
@@ -181,11 +204,15 @@ func DefaultConfig() *Config {
 			ChatterVoices:    make(map[string]string),
 		},
 		Crowd: CrowdConfig{
-			DefaultFilterMode:  FilterAll,
-			ChatterCooldownSec: 0,
-			GlobalPacingMs:     0,
-			SkipShortSpam:      true,
-			SpeakNoTextEvents:  false,
+			DefaultFilterMode:    FilterAll,
+			ChatterCooldownSec:   0,
+			GlobalPacingMs:       0,
+			IgnoreKnownBots:      true,
+			IgnoreBotCommands:    true,
+			BotCommandPrefixes:   []string{"!"},
+			SkipShortSpam:        true,
+			DeduplicateCopypasta: true,
+			SpeakNoTextEvents:    false,
 		},
 		Accessibility: AccessibilityConfig{
 			UIScale:         "1.0",
@@ -251,6 +278,9 @@ func (c *Config) Normalize() {
 	}
 	if c.Crowd.GlobalPacingMs < 0 {
 		c.Crowd.GlobalPacingMs = 0
+	}
+	if len(c.Crowd.BotCommandPrefixes) == 0 {
+		c.Crowd.BotCommandPrefixes = []string{"!"}
 	}
 	if c.Accessibility.FontScale < 0.8 || c.Accessibility.FontScale > 2.5 {
 		c.Accessibility.FontScale = 1.0

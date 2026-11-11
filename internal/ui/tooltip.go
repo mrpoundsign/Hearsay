@@ -78,6 +78,14 @@ func (mw *MainWindow) newTipBtn(label string, icon fyne.Resource, tooltip string
 }
 
 func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
+	mw.showTooltipForObject(btn, text)
+}
+
+func (mw *MainWindow) hideTooltip(btn *TooltipButton) {
+	mw.hideTooltipForObject(btn)
+}
+
+func (mw *MainWindow) showTooltipForObject(obj fyne.CanvasObject, text string) {
 	mw.uiMu.Lock()
 	defer mw.uiMu.Unlock()
 
@@ -87,7 +95,7 @@ func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
 	if mw.nowSpeakingLbl != nil {
 		mw.nowSpeakingLbl.SetText("Tip: " + text)
 	}
-	if mw.tooltipBubble == nil || mw.tooltipText == nil || mw.tooltipLayer == nil || btn == nil {
+	if mw.tooltipBubble == nil || mw.tooltipText == nil || mw.tooltipLayer == nil || obj == nil {
 		return
 	}
 	cnv := mw.Window.Canvas()
@@ -99,7 +107,7 @@ func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
 	if appInstance == nil || appInstance.Driver() == nil {
 		return
 	}
-	pos := appInstance.Driver().AbsolutePositionForObject(btn)
+	pos := appInstance.Driver().AbsolutePositionForObject(obj)
 	if pos.X <= 0 && pos.Y <= 0 {
 		return
 	}
@@ -113,7 +121,7 @@ func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
 	mw.tooltipBubble.Resize(bubbleSize)
 
 	cnvSize := cnv.Size()
-	popY := relY + btn.Size().Height + 6
+	popY := relY + obj.Size().Height + 6
 	if popY+bubbleSize.Height > cnvSize.Height-6 {
 		popY = max(4, relY-bubbleSize.Height-6)
 	}
@@ -121,14 +129,14 @@ func (mw *MainWindow) showTooltip(btn *TooltipButton, text string) {
 	mw.tooltipBubble.Move(fyne.NewPos(popX, popY))
 	mw.tooltipBubble.Show()
 	mw.tooltipBubble.Refresh()
-	mw.activeTipOwner = btn
+	mw.activeTipOwner = obj
 }
 
-func (mw *MainWindow) hideTooltip(btn *TooltipButton) {
+func (mw *MainWindow) hideTooltipForObject(obj fyne.CanvasObject) {
 	mw.uiMu.Lock()
 	defer mw.uiMu.Unlock()
 
-	if btn != nil && mw.activeTipOwner != nil && mw.activeTipOwner != btn {
+	if obj != nil && mw.activeTipOwner != nil && mw.activeTipOwner != obj {
 		return
 	}
 	if mw.tooltipBubble != nil {

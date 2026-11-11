@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -50,7 +51,7 @@ type MainWindow struct {
 	tooltipLayer   *fyne.Container
 	tooltipBubble  *fyne.Container
 	tooltipText    *canvas.Text
-	activeTipOwner *TooltipButton
+	activeTipOwner fyne.CanvasObject
 
 	// Quick Tune Bar
 	PlatformSelect *widget.Select
@@ -546,10 +547,9 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			chanImg.Hide()
 
 			chanLbl := widget.NewLabel("[Channel C]")
-			userTxt := canvas.NewText("User:", color.NRGBA{R: 0x38, G: 0xBD, B: 0xF8, A: 0xFF})
-			userTxt.TextStyle = fyne.TextStyle{Bold: true}
+			userLbl := newClickableChatterLabel(mw.showTooltipForObject, mw.hideTooltipForObject)
 
-			prefixBox := container.NewHBox(statusLbl, platImg, chanImg, chanLbl, userTxt)
+			prefixBox := container.NewHBox(statusLbl, platImg, chanImg, chanLbl, userLbl)
 
 			msgLbl := widget.NewLabel("Message template")
 			msgLbl.Wrapping = fyne.TextWrapWord
@@ -584,7 +584,7 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			platImg := prefixBox.Objects[1].(*canvas.Image)
 			chanImg := prefixBox.Objects[2].(*canvas.Image)
 			chanLbl := prefixBox.Objects[3].(*widget.Label)
-			userTxt := prefixBox.Objects[4].(*canvas.Text)
+			userLbl := prefixBox.Objects[4].(*clickableChatterLabel)
 
 			replayBtn := actions.Objects[0].(*TooltipButton)
 			moreBtn := actions.Objects[1].(*TooltipButton)
@@ -611,10 +611,19 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			if colHex == "" {
 				colHex = listener.ResolveChatterColorHex(entry.Platform, entry.UserName, "")
 			}
-			userTxt.Text = entry.UserName + ":"
-			userTxt.Color = ParseHexColor(colHex, color.NRGBA{R: 0x38, G: 0xBD, B: 0xF8, A: 0xFF})
-			userTxt.TextSize = theme.TextSize()
-			userTxt.Refresh()
+			userCol := ParseHexColor(colHex, color.NRGBA{R: 0x38, G: 0xBD, B: 0xF8, A: 0xFF})
+			profURL := listener.ProfileURL(entry.Platform, entry.UserName, entry.UserID)
+			var onUserTap func()
+			tip := fmt.Sprintf("Chatter: @%s (%s)", entry.UserName, entry.Platform)
+			if profURL != "" {
+				tip = fmt.Sprintf("Open @%s profile in browser: %s", entry.UserName, profURL)
+				onUserTap = func() {
+					if u, err := url.Parse(profURL); err == nil {
+						_ = mw.App.OpenURL(u)
+					}
+				}
+			}
+			userLbl.SetChatter(entry.UserName+":", userCol, tip, onUserTap)
 
 			msgLbl.SetText(entry.Text)
 
@@ -633,6 +642,7 @@ func (mw *MainWindow) buildLiveLogWidget() {
 
 			entryID := entry.ID
 			chatter := entry.UserName
+			entryCopy := entry
 			replayBtn.SetTooltip(fmt.Sprintf("Replay message from %s aloud", chatter))
 			replayBtn.OnTapped = func() {
 				mw.hideTooltip(nil)
@@ -641,15 +651,30 @@ func (mw *MainWindow) buildLiveLogWidget() {
 			moreBtn.SetTooltip(fmt.Sprintf("More actions for %s (VIP, Voice, Mute)", chatter))
 			moreBtn.OnTapped = func() {
 				mw.hideTooltip(nil)
-				mw.showChatterActionsMenu(moreBtn, chatter)
+				mw.showChatterActionsMenu(moreBtn, entryCopy)
 			}
 		},
 	)
 }
 
-func (mw *MainWindow) showChatterActionsMenu(anchor fyne.CanvasObject, chatter string) {
+func (mw *MainWindow) showChatterActionsMenu(anchor fyne.CanvasObject, entry listener.LogEntry) {
 	if mw.Window == nil || mw.Window.Canvas() == nil {
 		return
+	}
+	chatter := entry.UserName
+	var menuItems []*fyne.MenuItem
+	profURL := listener.ProfileURL(entry.Platform, chatter, entry.UserID)
+	if profURL != "" {
+		platName := entry.Platform
+		if platName == "" {
+			platName = "Profile"
+		}
+		menuItems = append(menuItems, fyne.NewMenuItem("Open "+platName+" Profile ("+profURL+")", func() {
+			if u, err := url.Parse(profURL); err == nil {
+				_ = mw.App.OpenURL(u)
+			}
+		}))
+		menuItems = append(menuItems, fyne.NewMenuItemSeparator())
 	}
 	vipItem := fyne.NewMenuItem("Toggle Priority VIP / Friend ("+chatter+")", func() {
 		mw.Session.TogglePriorityFriend(chatter)
@@ -662,7 +687,8 @@ func (mw *MainWindow) showChatterActionsMenu(anchor fyne.CanvasObject, chatter s
 		mw.Session.MuteChatter(chatter)
 		mw.refreshLog()
 	})
-	menu := fyne.NewMenu("", vipItem, voiceItem, fyne.NewMenuItemSeparator(), muteItem)
+	menuItems = append(menuItems, vipItem, voiceItem, fyne.NewMenuItemSeparator(), muteItem)
+	menu := fyne.NewMenu("", menuItems...)
 
 	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
 	pos = pos.Add(fyne.NewPos(0, anchor.Size().Height))

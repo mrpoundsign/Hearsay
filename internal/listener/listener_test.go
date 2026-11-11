@@ -422,3 +422,100 @@ func TestMultiStreamSessionEndToEnd(t *testing.T) {
 		t.Fatalf("expected 2 slots in saved lineup, got %d", len(lineup.Slots))
 	}
 }
+
+func TestCrowdControllerCopypastaAndASCIIArt(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cc := NewCrowdController()
+	slot := config.StreamSlotConfig{
+		Platform: "twitch",
+		Channel:  "streamer",
+	}
+	now := time.Now()
+	pasta := "I saw the streamer at the grocery store yesterday and he told me to subscribe!"
+
+	// 1. First occurrence of copypasta is allowed
+	res1 := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "viewer1",
+		Text:     pasta,
+	}, pasta, slot, cfg, now)
+	if !res1.Allow {
+		t.Fatalf("expected first copypasta occurrence to be allowed, got reason=%q", res1.Reason)
+	}
+
+	// 2. Second occurrence from another user within 30s is suppressed with reason "copypasta"
+	res2 := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "viewer2",
+		Text:     pasta,
+	}, pasta+"!!!", slot, cfg, now.Add(5*time.Second))
+	if res2.Allow || res2.Reason != "copypasta" {
+		t.Fatalf("expected second copypasta occurrence to be suppressed with reason 'copypasta', got allow=%v reason=%q", res2.Allow, res2.Reason)
+	}
+
+	// 3. Priority friend bypasses copypasta filter
+	cfg.Identity.PriorityChatters = []string{"bestfriend"}
+	res3 := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "bestfriend",
+		Text:     pasta,
+	}, pasta, slot, cfg, now.Add(6*time.Second))
+	if !res3.Allow || !res3.IsPriority {
+		t.Fatalf("expected priority friend to bypass copypasta filter, got %+v", res3)
+	}
+
+	// 4. Bot commands (!lurk) are ignored by default even from moderators/priority chatters
+	resCmd := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "bestfriend",
+		Roles:    []string{"moderator"},
+		Text:     "!lurk see you in a bit",
+	}, "!lurk see you in a bit", slot, cfg, now.Add(7*time.Second))
+	if resCmd.Allow || resCmd.Reason != "bot_command" {
+		t.Fatalf("expected !lurk to be suppressed with reason 'bot_command', got %+v", resCmd)
+	}
+
+	// 5. Disabling IgnoreBotCommands allows !lurk
+	cfg.Crowd.IgnoreBotCommands = false
+	resCmdAllowed := cc.Evaluate(chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "bestfriend",
+		Text:     "!lurk see you in a bit",
+	}, "!lurk see you in a bit", slot, cfg, now.Add(8*time.Second))
+	if !resCmdAllowed.Allow {
+		t.Fatalf("expected !lurk to be allowed when IgnoreBotCommands=false, got %+v", resCmdAllowed)
+	}
+
+	// 6. Session-level IgnoreKnownBots drops Nightbot by default, allows when disabled or in PriorityChatters
+	store := config.NewMemoryStore()
+	sessCfg, _ := store.Load()
+	sess := NewSession(sessCfg, store)
+	defer func() { _ = sess.Close() }()
+	sess.SetConnectorFactory(func(_ string, _ func(ev *chat.Event), onStatus func(status string, detail string)) (SlotConnector, error) {
+		return &mockConnector{onStatus: onStatus}, nil
+	})
+	_ = sess.AddSlot(slot)
+
+	sess.HandleInboundEvent("twitch:streamer", &chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "Nightbot",
+		Text:     "Follow the channel on Twitter!",
+	})
+	if len(sess.LogSnapshot()) != 0 {
+		t.Fatalf("expected Nightbot message to be ignored when IgnoreKnownBots=true, got %d log entries", len(sess.LogSnapshot()))
+	}
+
+	if err := sess.UpdateConfig(func(c *config.Config) {
+		c.Crowd.IgnoreKnownBots = false
+	}); err != nil {
+		t.Fatalf("UpdateConfig failed: %v", err)
+	}
+	sess.HandleInboundEvent("twitch:streamer", &chat.Event{
+		Kind:     chat.EventKindMessage,
+		UserName: "Nightbot",
+		Text:     "Follow the channel on Twitter!",
+	})
+	if len(sess.LogSnapshot()) != 1 {
+		t.Fatalf("expected Nightbot message to be logged when IgnoreKnownBots=false, got %d log entries", len(sess.LogSnapshot()))
+	}
+}

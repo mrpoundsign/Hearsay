@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.4 — 2026-11-10
+
+### Added
+- **Anti-Spam & Chat Hygiene Filters**:
+  - **Strip Zalgo & Excessive Combining Marks** (`strip_zalgo`): Strips stacked Unicode combining diacritics while preserving normal accented letters.
+  - **Strip Braille & ASCII Art Spam** (`strip_ascii_art`): Strips Braille blank/dot art (`U+2800`–`U+28FF`), box-drawing/block art (`U+2500`–`U+259F`), and repeated symbol art before TTS synthesis.
+  - **Multi-User Copypasta Deduplication** (`deduplicate_copypasta_window_seconds`: `Off`, `15s`, `30s`, `45s`, `60s`, `90s`, `2m`, `5m`, default `30s`): Suppresses identical normalized chat messages repeated across multiple chatters while never dropping paid or alert events.
+  - **Max Duplicate Words & Bot/Command Filtering**: Added configurable **Max Consecutive Duplicate Words** (`max_duplicate_words`), **Ignore Known Chatbots** (`ignore_known_bots`), and **Ignore `!command` Messages** (`ignore_commands`) in **Filters & Moderation**.
+- **Clickable Chatter Profile Links**:
+  - Made chatter usernames clickable with hover underlines across the Live Feed to open the viewer's Twitch, YouTube, Kick, or TikTok channel profile in the browser.
+
+---
+
 ## v0.0.3 — 2026-11-09
 
 ### Added

@@ -48,6 +48,7 @@ type LogEntry struct {
 	Platform   string
 	Channel    string
 	UserName   string
+	UserID     string
 	UserColor  string
 	Text       string
 	SpokenText string
@@ -705,6 +706,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 			Platform:   slotCfg.Platform,
 			Channel:    slotCfg.EffectiveLabel(),
 			UserName:   speaker,
+			UserID:     ev.UserID,
 			UserColor:  userColor,
 			Text:       ev.Text,
 			SpokenText: cleanedText,
@@ -727,6 +729,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 			Platform:   slotCfg.Platform,
 			Channel:    slotCfg.EffectiveLabel(),
 			UserName:   speaker,
+			UserID:     ev.UserID,
 			UserColor:  userColor,
 			Text:       ev.Text,
 			SpokenText: cleanedText,
@@ -755,6 +758,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		Platform:   slotCfg.Platform,
 		Channel:    slotCfg.EffectiveLabel(),
 		UserName:   speaker,
+		UserID:     ev.UserID,
 		UserColor:  userColor,
 		Text:       ev.Text,
 		SpokenText: spokenText,

@@ -85,4 +85,31 @@ func TestMemoryStoreIsolation(t *testing.T) {
 	if reloaded.Accessibility.FontScale != 1.5 || !reloaded.Accessibility.HighContrast {
 		t.Fatalf("unexpected accessibility settings: %+v", reloaded.Accessibility)
 	}
+
+	// Verify ChatterSpeeds normalization omits 1.0x default and clamps out-of-range multipliers
+	cfg.Identity.ChatterSpeeds = map[string]float64{
+		"default_user": 1.0,
+		"fast_user":    1.25,
+		"too_fast":     4.0,
+		"too_slow":     0.1,
+	}
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save with ChatterSpeeds failed: %v", err)
+	}
+	reloaded2, err := store.Load()
+	if err != nil {
+		t.Fatalf("Reload with ChatterSpeeds failed: %v", err)
+	}
+	if _, exists := reloaded2.Identity.ChatterSpeeds["default_user"]; exists {
+		t.Errorf("expected 1.0x default speed multiplier to be omitted on normalize")
+	}
+	if got := reloaded2.Identity.ChatterSpeeds["fast_user"]; got != 1.25 {
+		t.Errorf("expected fast_user multiplier 1.25, got %v", got)
+	}
+	if got := reloaded2.Identity.ChatterSpeeds["too_fast"]; got != 2.5 {
+		t.Errorf("expected too_fast clamped to 2.5, got %v", got)
+	}
+	if got := reloaded2.Identity.ChatterSpeeds["too_slow"]; got != 0.5 {
+		t.Errorf("expected too_slow clamped to 0.5, got %v", got)
+	}
 }

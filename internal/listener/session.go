@@ -787,7 +787,7 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 		slotID:     slotCfg.SlotID(),
 		spokenText: spokenText,
 		voiceID:    voiceID,
-		speed:      cfgSnap.Audio.DefaultSpeed,
+		speed:      ResolveChatterSpeed(*ev, cfgSnap),
 		volume:     slotCfg.Volume,
 		pan:        slotCfg.Pan,
 		isMention:  eval.IsMention,
@@ -1081,12 +1081,16 @@ func (s *Session) ReplayEntry(entryID uint64) bool {
 			break
 		}
 	}
-	speed := s.cfg.Audio.DefaultSpeed
+	cfgSnap := s.cfg.Clone()
 	s.mu.RUnlock()
 
 	if target == nil {
 		return false
 	}
+	speed := ResolveChatterSpeed(chat.Event{
+		Platform: target.Platform,
+		UserName: target.UserName,
+	}, cfgSnap)
 	spoken := target.SpokenText
 	if strings.TrimSpace(spoken) == "" {
 		spoken = target.UserName + ": " + target.Text
@@ -1146,6 +1150,12 @@ func (s *Session) TogglePriorityFriend(username string) bool {
 
 // AssignChatterVoice assigns a specific neural TTS voice ID to a chatter username.
 func (s *Session) AssignChatterVoice(username, voiceID string) {
+	s.AssignChatterVoiceAndSpeed(username, voiceID, 0)
+}
+
+// AssignChatterVoiceAndSpeed assigns a specific neural TTS voice ID and per-user speed multiplier
+// (where 1.0 or <= 0 means 1.0x of the global default speed) to a chatter username.
+func (s *Session) AssignChatterVoiceAndSpeed(username, voiceID string, speedMultiplier float64) {
 	clean := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))
 	if clean == "" {
 		return
@@ -1154,20 +1164,34 @@ func (s *Session) AssignChatterVoice(username, voiceID string) {
 		if cfg.Identity.ChatterVoices == nil {
 			cfg.Identity.ChatterVoices = make(map[string]string)
 		}
+		if cfg.Identity.ChatterSpeeds == nil {
+			cfg.Identity.ChatterSpeeds = make(map[string]float64)
+		}
 		if strings.TrimSpace(voiceID) == "" {
 			delete(cfg.Identity.ChatterVoices, clean)
 		} else {
 			cfg.Identity.ChatterVoices[clean] = strings.TrimSpace(voiceID)
 		}
+		if speedMultiplier > 0 {
+			cfg.Identity.ChatterSpeeds[clean] = speedMultiplier
+		} else if strings.TrimSpace(voiceID) == "" {
+			delete(cfg.Identity.ChatterSpeeds, clean)
+		}
 	})
 }
 
-// PreviewVoice synthesizes and plays a short sample phrase using the specified voiceID.
+// PreviewVoice synthesizes and plays a short sample phrase using the specified voiceID at the global default speed.
 func (s *Session) PreviewVoice(voiceID string, sampleText string) {
+	s.PreviewVoiceWithSpeed(voiceID, 1.0, sampleText)
+}
+
+// PreviewVoiceWithSpeed synthesizes and plays a short sample phrase using the specified voiceID
+// and a speedMultiplier applied on top of the global default speed.
+func (s *Session) PreviewVoiceWithSpeed(voiceID string, speedMultiplier float64, sampleText string) {
 	s.mu.RLock()
 	eng := s.engine
 	p := s.player
-	speed := s.cfg.Audio.DefaultSpeed
+	baseSpeed := s.cfg.Audio.DefaultSpeed
 	defVoice := s.cfg.Audio.DefaultVoice
 	s.mu.RUnlock()
 
@@ -1181,8 +1205,17 @@ func (s *Session) PreviewVoice(voiceID string, sampleText string) {
 	if strings.TrimSpace(sampleText) == "" {
 		sampleText = "Hello from Hearsay! Ready to read live chat aloud."
 	}
-	if speed <= 0 {
-		speed = 1.0
+	if baseSpeed <= 0 {
+		baseSpeed = 1.0
+	}
+	if speedMultiplier <= 0 {
+		speedMultiplier = 1.0
+	}
+	speed := baseSpeed * speedMultiplier
+	if speed < 0.25 {
+		speed = 0.25
+	} else if speed > 3.0 {
+		speed = 3.0
 	}
 	go func() {
 		samples, sr, err := eng.Synthesize(sampleText, vid, float32(speed))

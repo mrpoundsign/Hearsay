@@ -1297,29 +1297,52 @@ func (mw *MainWindow) showAssignVoiceDialog(username string) {
 	options := append([]string{"(Auto Hash Voice)"}, voiceLabels...)
 	voiceSel := widget.NewSelect(options, nil)
 
-	currentVoice := cfg.Identity.ChatterVoices[strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))]
+	cleanUser := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))
+	currentVoice := cfg.Identity.ChatterVoices[cleanUser]
 	if currentVoice != "" {
 		voiceSel.SetSelected(tts.VoiceDisplayName(currentVoice))
 	} else {
 		voiceSel.SetSelected("(Auto Hash Voice)")
 	}
 
-	previewBtn := mw.newTipBtn("Preview Voice", theme.MediaPlayIcon(), "Hear a sample of this voice", func() {
+	initMult := 1.0
+	if m, ok := cfg.Identity.ChatterSpeeds[cleanUser]; ok && m > 0 {
+		initMult = m
+	}
+	baseSpeed := cfg.Audio.DefaultSpeed
+	if baseSpeed <= 0 {
+		baseSpeed = 1.0
+	}
+	formatMultText := func(mult float64) string {
+		eff := min(max(baseSpeed*mult, 0.25), 3.0)
+		return fmt.Sprintf("Speed Multiplier: %.2fx (Effective: %.2fx)", mult, eff)
+	}
+	speedLbl := widget.NewLabel(formatMultText(initMult))
+	speedSld := widget.NewSlider(0.5, 2.0)
+	speedSld.Step = 0.05
+	speedSld.SetValue(initMult)
+	speedSld.OnChanged = func(val float64) {
+		speedLbl.SetText(formatMultText(val))
+	}
+
+	previewBtn := mw.newTipBtn("Preview Voice", theme.MediaPlayIcon(), "Hear a sample of this voice at the selected speed multiplier", func() {
 		choice := voiceSel.Selected
 		vid := labelToID[choice]
 		if vid == "" && choice != "(Auto Hash Voice)" {
 			vid = tts.VoiceIDFromLabel(choice)
 		}
-		mw.Session.PreviewVoice(vid, fmt.Sprintf("Hello, this is %s speaking in chat!", username))
+		mw.Session.PreviewVoiceWithSpeed(vid, speedSld.Value, fmt.Sprintf("Hello, this is %s speaking in chat!", username))
 	})
 
 	content := container.NewVBox(
-		widget.NewLabel(fmt.Sprintf("Select a neural TTS voice for %s:", username)),
+		widget.NewLabel(fmt.Sprintf("Select a neural TTS voice and speed multiplier for %s:", username)),
 		voiceSel,
+		speedLbl,
+		speedSld,
 		previewBtn,
 	)
 
-	d := dialog.NewCustomConfirm("Assign Voice to "+username, "Save Voice", "Cancel", content, func(ok bool) {
+	d := dialog.NewCustomConfirm("Assign Voice & Speed to "+username, "Save Voice", "Cancel", content, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -1331,9 +1354,9 @@ func (mw *MainWindow) showAssignVoiceDialog(username string) {
 				vid = tts.VoiceIDFromLabel(choice)
 			}
 		}
-		mw.Session.AssignChatterVoice(username, vid)
+		mw.Session.AssignChatterVoiceAndSpeed(username, vid, speedSld.Value)
 	}, mw.Window)
-	d.Resize(fyne.NewSize(460, 220))
+	d.Resize(fyne.NewSize(460, 290))
 	d.Show()
 }
 

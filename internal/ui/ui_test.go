@@ -201,3 +201,32 @@ func TestParseHotkey(t *testing.T) {
 		t.Fatalf("expected error for unmodified single letter hotkey")
 	}
 }
+
+func TestChatterVoiceAndSpeedMultiplierResolution(t *testing.T) {
+	store := config.NewMemoryStore()
+	cfg, _ := store.Load()
+	cfg.Audio.DefaultSpeed = 1.20
+	_ = store.Save(cfg)
+
+	sess := listener.NewSession(cfg, store)
+	defer func() { _ = sess.Close() }()
+
+	// Default chatter with no override uses 1.0x * 1.20 = 1.20
+	ev := chat.Event{Platform: "twitch", UserName: "MoCoMade"}
+	if got := listener.ResolveChatterSpeed(ev, sess.ConfigSnapshot()); got < 1.199 || got > 1.201 {
+		t.Fatalf("expected default chatter speed 1.20, got %v", got)
+	}
+
+	// Assign a 1.25x speed multiplier -> 1.20 * 1.25 = 1.50
+	sess.AssignChatterVoiceAndSpeed("@MoCoMade", "supertonic:m2", 1.25)
+	snap := sess.ConfigSnapshot()
+	if gotVoice := snap.Identity.ChatterVoices["mocomade"]; gotVoice != "supertonic:m2" {
+		t.Fatalf("expected assigned voice 'supertonic:m2', got %q", gotVoice)
+	}
+	if gotMult := listener.SelectChatterSpeedMultiplier(ev, snap); gotMult != 1.25 {
+		t.Fatalf("expected multiplier 1.25, got %v", gotMult)
+	}
+	if gotSpd := listener.ResolveChatterSpeed(ev, snap); gotSpd < 1.499 || gotSpd > 1.501 {
+		t.Fatalf("expected resolved speed 1.50 (1.20 * 1.25), got %v", gotSpd)
+	}
+}

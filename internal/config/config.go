@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -65,12 +66,13 @@ func (a AudioConfig) EffectiveEnabledModels() []string {
 	return a.EnabledModels
 }
 
-// IdentityConfig stores zero-login plain-text usernames, priority friends, muted chatters, and voice overrides.
+// IdentityConfig stores zero-login plain-text usernames, priority friends, muted chatters, and voice/speed overrides.
 type IdentityConfig struct {
-	MyUsernames      []string          `json:"my_usernames"`
-	PriorityChatters []string          `json:"priority_chatters"`
-	IgnoredChatters  []string          `json:"ignored_chatters"`
-	ChatterVoices    map[string]string `json:"chatter_voices"`
+	MyUsernames      []string           `json:"my_usernames"`
+	PriorityChatters []string           `json:"priority_chatters"`
+	IgnoredChatters  []string           `json:"ignored_chatters"`
+	ChatterVoices    map[string]string  `json:"chatter_voices"`
+	ChatterSpeeds    map[string]float64 `json:"chatter_speeds,omitempty"`
 }
 
 // CrowdConfig configures global crowd control and high-velocity chat filtering.
@@ -202,6 +204,7 @@ func DefaultConfig() *Config {
 			PriorityChatters: []string{},
 			IgnoredChatters:  []string{},
 			ChatterVoices:    make(map[string]string),
+			ChatterSpeeds:    make(map[string]float64),
 		},
 		Crowd: CrowdConfig{
 			DefaultFilterMode:    FilterAll,
@@ -267,6 +270,19 @@ func (c *Config) Normalize() {
 	}
 	if c.Identity.ChatterVoices == nil {
 		c.Identity.ChatterVoices = make(map[string]string)
+	}
+	if c.Identity.ChatterSpeeds == nil {
+		c.Identity.ChatterSpeeds = make(map[string]float64)
+	}
+	for k, spd := range c.Identity.ChatterSpeeds {
+		switch {
+		case spd <= 0 || math.Abs(spd-1.0) < 0.005:
+			delete(c.Identity.ChatterSpeeds, k)
+		case spd < 0.5:
+			c.Identity.ChatterSpeeds[k] = 0.5
+		case spd > 2.5:
+			c.Identity.ChatterSpeeds[k] = 2.5
+		}
 	}
 	switch c.Crowd.DefaultFilterMode {
 	case FilterAll, FilterSubsVIPsMods, FilterModsStreamerMentions:

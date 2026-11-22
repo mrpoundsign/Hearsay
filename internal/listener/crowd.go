@@ -233,8 +233,10 @@ func IsShortHypeSpam(text string) bool {
 		return true
 	}
 
+	const hypeTrimSet = ".,!?~*_-:;\"'()[]{}…—–"
+
 	if len(fields) == 1 {
-		token := strings.ToLower(strings.Trim(fields[0], ".,!?~*_-:;\"'()[]{}"))
+		token := strings.ToLower(strings.Trim(fields[0], hypeTrimSet))
 		if len([]rune(token)) <= 2 {
 			return true
 		}
@@ -244,11 +246,11 @@ func IsShortHypeSpam(text string) bool {
 	}
 
 	if len(fields) <= 4 {
-		first := strings.ToLower(strings.Trim(fields[0], ".,!?~*_-:;\"'()[]{}"))
+		first := strings.ToLower(strings.Trim(fields[0], hypeTrimSet))
 		if _, isHype := commonHypeSpamTokens[first]; isHype {
 			allSame := true
 			for _, f := range fields[1:] {
-				clean := strings.ToLower(strings.Trim(f, ".,!?~*_-:;\"'()[]{}"))
+				clean := strings.ToLower(strings.Trim(f, hypeTrimSet))
 				if clean != first {
 					allSame = false
 					break

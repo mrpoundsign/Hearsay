@@ -43,31 +43,36 @@ const (
 
 // LogEntry represents an entry in the in-memory Unified Live Log ring buffer.
 type LogEntry struct {
-	ID         uint64
-	SlotID     string
-	Platform   string
-	Channel    string
-	UserName   string
-	UserID     string
-	UserColor  string
-	Text       string
-	SpokenText string
-	VoiceID    string
-	Pan        float64
-	Volume     float64
-	Status     LogStatus
-	SkipReason string
-	Coalesced  bool
-	IsMention  bool
-	IsPriority bool
-	Timestamp  time.Time
+	ID                uint64
+	SlotID            string
+	Platform          string
+	Channel           string
+	StreamID          string
+	StreamTitle       string
+	StreamOrientation string
+	UserName          string
+	UserID            string
+	UserColor         string
+	Text              string
+	SpokenText        string
+	VoiceID           string
+	Pan               float64
+	Volume            float64
+	Status            LogStatus
+	SkipReason        string
+	Coalesced         bool
+	IsMention         bool
+	IsPriority        bool
+	Timestamp         time.Time
 }
 
 // SlotState represents the live runtime state of an active stream slot.
 type SlotState struct {
-	Config       config.StreamSlotConfig
-	Status       string // "disconnected", "connecting", "waiting", "connected"
-	StatusDetail string
+	Config        config.StreamSlotConfig
+	Status        string // "disconnected", "connecting", "waiting", "connected"
+	StatusDetail  string
+	StreamCount   int
+	ActiveStreams []youtube.StreamInfo
 }
 
 // SlotConnector abstracts a platform stream connector instance.
@@ -549,11 +554,17 @@ func (s *Session) SlotsSnapshot() []SlotState {
 	out := make([]SlotState, 0, len(s.slotOrder))
 	for _, id := range s.slotOrder {
 		if as, ok := s.slots[id]; ok {
-			out = append(out, SlotState{
+			st := SlotState{
 				Config:       as.cfg,
 				Status:       as.status,
 				StatusDetail: as.detail,
-			})
+			}
+			if ytConn, ok := as.connector.(*youtube.Connector); ok && ytConn != nil {
+				streams := ytConn.ActiveStreams()
+				st.StreamCount = len(streams)
+				st.ActiveStreams = streams
+			}
+			out = append(out, st)
 		}
 	}
 	return out
@@ -710,46 +721,52 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 
 	if !eval.Allow {
 		s.appendLogEntry(LogEntry{
-			ID:         entryID,
-			SlotID:     slotCfg.SlotID(),
-			Platform:   slotCfg.Platform,
-			Channel:    slotCfg.EffectiveLabel(),
-			UserName:   speaker,
-			UserID:     ev.UserID,
-			UserColor:  userColor,
-			Text:       ev.Text,
-			SpokenText: cleanedText,
-			VoiceID:    voiceID,
-			Pan:        slotCfg.Pan,
-			Volume:     slotCfg.Volume,
-			Status:     StatusSkipped,
-			SkipReason: eval.Reason,
-			IsMention:  eval.IsMention,
-			IsPriority: eval.IsPriority,
-			Timestamp:  ev.Timestamp,
+			ID:                entryID,
+			SlotID:            slotCfg.SlotID(),
+			Platform:          slotCfg.Platform,
+			Channel:           slotCfg.EffectiveLabel(),
+			StreamID:          ev.StreamID,
+			StreamTitle:       ev.StreamTitle,
+			StreamOrientation: ev.StreamOrientation,
+			UserName:          speaker,
+			UserID:            ev.UserID,
+			UserColor:         userColor,
+			Text:              ev.Text,
+			SpokenText:        cleanedText,
+			VoiceID:           voiceID,
+			Pan:               slotCfg.Pan,
+			Volume:            slotCfg.Volume,
+			Status:            StatusSkipped,
+			SkipReason:        eval.Reason,
+			IsMention:         eval.IsMention,
+			IsPriority:        eval.IsPriority,
+			Timestamp:         ev.Timestamp,
 		})
 		return
 	}
 
 	if s.panicked.Load() {
 		s.appendLogEntry(LogEntry{
-			ID:         entryID,
-			SlotID:     slotCfg.SlotID(),
-			Platform:   slotCfg.Platform,
-			Channel:    slotCfg.EffectiveLabel(),
-			UserName:   speaker,
-			UserID:     ev.UserID,
-			UserColor:  userColor,
-			Text:       ev.Text,
-			SpokenText: cleanedText,
-			VoiceID:    voiceID,
-			Pan:        slotCfg.Pan,
-			Volume:     slotCfg.Volume,
-			Status:     StatusSkipped,
-			SkipReason: "panic_muted",
-			IsMention:  eval.IsMention,
-			IsPriority: eval.IsPriority,
-			Timestamp:  ev.Timestamp,
+			ID:                entryID,
+			SlotID:            slotCfg.SlotID(),
+			Platform:          slotCfg.Platform,
+			Channel:           slotCfg.EffectiveLabel(),
+			StreamID:          ev.StreamID,
+			StreamTitle:       ev.StreamTitle,
+			StreamOrientation: ev.StreamOrientation,
+			UserName:          speaker,
+			UserID:            ev.UserID,
+			UserColor:         userColor,
+			Text:              ev.Text,
+			SpokenText:        cleanedText,
+			VoiceID:           voiceID,
+			Pan:               slotCfg.Pan,
+			Volume:            slotCfg.Volume,
+			Status:            StatusSkipped,
+			SkipReason:        "panic_muted",
+			IsMention:         eval.IsMention,
+			IsPriority:        eval.IsPriority,
+			Timestamp:         ev.Timestamp,
 		})
 		return
 	}
@@ -762,23 +779,26 @@ func (s *Session) HandleInboundEvent(slotID string, ev *chat.Event) {
 	s.mu.Unlock()
 
 	entry := LogEntry{
-		ID:         entryID,
-		SlotID:     slotCfg.SlotID(),
-		Platform:   slotCfg.Platform,
-		Channel:    slotCfg.EffectiveLabel(),
-		UserName:   speaker,
-		UserID:     ev.UserID,
-		UserColor:  userColor,
-		Text:       ev.Text,
-		SpokenText: spokenText,
-		VoiceID:    voiceID,
-		Pan:        slotCfg.Pan,
-		Volume:     slotCfg.Volume,
-		Status:     StatusQueued,
-		Coalesced:  coalesced,
-		IsMention:  eval.IsMention,
-		IsPriority: eval.IsPriority,
-		Timestamp:  ev.Timestamp,
+		ID:                entryID,
+		SlotID:            slotCfg.SlotID(),
+		Platform:          slotCfg.Platform,
+		Channel:           slotCfg.EffectiveLabel(),
+		StreamID:          ev.StreamID,
+		StreamTitle:       ev.StreamTitle,
+		StreamOrientation: ev.StreamOrientation,
+		UserName:          speaker,
+		UserID:            ev.UserID,
+		UserColor:         userColor,
+		Text:              ev.Text,
+		SpokenText:        spokenText,
+		VoiceID:           voiceID,
+		Pan:               slotCfg.Pan,
+		Volume:            slotCfg.Volume,
+		Status:            StatusQueued,
+		Coalesced:         coalesced,
+		IsMention:         eval.IsMention,
+		IsPriority:        eval.IsPriority,
+		Timestamp:         ev.Timestamp,
 	}
 	s.appendLogEntry(entry)
 

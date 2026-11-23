@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -623,6 +624,9 @@ func (mw *MainWindow) buildLiveLogWidget() {
 					}
 				}
 			}
+			if streamTip := formatHearsayStreamTooltip(entry); streamTip != "" {
+				tip += "\n" + streamTip
+			}
 			userLbl.SetChatter(entry.UserName+":", userCol, tip, onUserTap)
 
 			msgLbl.SetText(entry.Text)
@@ -893,6 +897,20 @@ func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 	platIcon.FillMode = canvas.ImageFillContain
 	platIcon.SetMinSize(fyne.NewSize(18, 18))
 
+	var leadingIcon fyne.CanvasObject = platIcon
+	if st.Status == "connected" && st.StreamCount > 1 {
+		countCircle := canvas.NewCircle(color.NRGBA{R: 0x22, G: 0xC5, B: 0x5E, A: 0xFF})
+		countTxt := canvas.NewText(strconv.Itoa(st.StreamCount), color.NRGBA{R: 0x0F, G: 0x17, B: 0x2A, A: 0xFF})
+		countTxt.TextStyle = fyne.TextStyle{Bold: true}
+		countTxt.TextSize = 10
+		countTxt.Alignment = fyne.TextAlignCenter
+		countBadge := container.NewGridWrap(
+			fyne.NewSize(15, 15),
+			container.NewStack(countCircle, container.NewCenter(countTxt)),
+		)
+		leadingIcon = container.NewHBox(platIcon, container.NewCenter(countBadge))
+	}
+
 	titleLbl := widget.NewLabelWithStyle(
 		fmt.Sprintf("%s %s", statusBadge, st.Config.EffectiveLabel()),
 		fyne.TextAlignLeading,
@@ -938,7 +956,7 @@ func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 	})
 	discBtn.Importance = widget.DangerImportance
 
-	headerRow := container.NewBorder(nil, nil, platIcon, container.NewHBox(muteBtn, saveBtn, discBtn), titleLbl)
+	headerRow := container.NewBorder(nil, nil, leadingIcon, container.NewHBox(muteBtn, saveBtn, discBtn), titleLbl)
 
 	// Volume & Stereo Pan controls
 	volLbl := widget.NewLabel(fmt.Sprintf("Vol: %.0f%%", st.Config.Volume*100))
@@ -1429,5 +1447,35 @@ func formatSkipReason(reason string) string {
 			return "[SKIP]"
 		}
 		return "[SKIP]"
+	}
+}
+
+func formatHearsayStreamTooltip(entry listener.LogEntry) string {
+	orient := strings.ToLower(strings.TrimSpace(entry.StreamOrientation))
+	var orientLabel string
+	switch orient {
+	case "vertical":
+		orientLabel = "Vertical"
+	case "horizontal":
+		orientLabel = "Horizontal"
+	}
+	title := strings.TrimSpace(entry.StreamTitle)
+	sid := strings.TrimSpace(entry.StreamID)
+	if orientLabel == "" && title == "" && sid == "" {
+		return ""
+	}
+	header := "Stream"
+	if orientLabel != "" {
+		header += " (" + orientLabel + ")"
+	}
+	switch {
+	case title != "" && sid != "":
+		return header + ": " + title + " (" + sid + ")"
+	case title != "":
+		return header + ": " + title
+	case sid != "":
+		return header + ": " + sid
+	default:
+		return header
 	}
 }

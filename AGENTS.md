@@ -6,6 +6,7 @@
 
 - **Visual Identity**: Obsidian Slate (`#0F172A`), Chrome White (`#F8FAFC`), and Emerald Mint (`#34D399`).
 - **Shared Model & Cache Directories**: Uses `tts.DefaultModelDir()` and `tts.DefaultSharedCacheDir()` (`%LOCALAPPDATA%\com.github.mrpoundsign.towncrier\...`) so models downloaded in either TownCrier or Hearsay work in both without duplication.
+- **Explicit Scope Boundary (No Plugin/Bot Host)**: Hearsay is a viewer-only accessibility app and intentionally does **not** host TownCrier plugins (`internal/pluginhost`) or bot automation (`internal/bot`).
 
 ## 2. Quality Gate & Build Rules
 

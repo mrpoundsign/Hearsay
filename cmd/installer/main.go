@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"testing"
 
 	"github.com/mrpoundsign/appinstaller/pkg/installer"
 	"github.com/mrpoundsign/appinstaller/pkg/installerui"
@@ -18,7 +19,7 @@ import (
 var payloadFS embed.FS
 
 var (
-	AppVersion = "0.0.4"
+	AppVersion = "0.0.5"
 )
 
 func main() {
@@ -59,6 +60,12 @@ func buildAppSpec() installer.AppSpec {
 				Title:       "Pre-download Supertonic TTS Model Pack",
 				Description: "Fast & lean neural voices (~265 MB, shared with TownCrier)",
 				DefaultOn:   true,
+				IsInstalled: func(_ string) bool {
+					if testing.Testing() {
+						return false
+					}
+					return tts.IsModelFamilyInstalled(tts.DefaultModelDir(), tts.ModelSupertonic, false)
+				},
 				Run: func(_ context.Context, _ string, progress func(cur, total int64, status string)) error {
 					modelDir := tts.DefaultModelDir()
 					if tts.IsModelFamilyInstalled(modelDir, tts.ModelSupertonic, false) {
@@ -77,6 +84,12 @@ func buildAppSpec() installer.AppSpec {
 				Title:       "Pre-download Kokoro-82M English TTS Model Pack",
 				Description: "Expressive English neural voices (~134 MB CPU, shared with TownCrier)",
 				DefaultOn:   false,
+				IsInstalled: func(_ string) bool {
+					if testing.Testing() {
+						return false
+					}
+					return tts.IsKokoroInstalledForMode(tts.DefaultModelDir(), false)
+				},
 				Run: func(_ context.Context, _ string, progress func(cur, total int64, status string)) error {
 					modelDir := tts.DefaultModelDir()
 					if tts.IsKokoroInstalledForMode(modelDir, false) {

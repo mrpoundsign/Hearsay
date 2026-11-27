@@ -2,6 +2,8 @@ package config
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -111,5 +113,48 @@ func TestMemoryStoreIsolation(t *testing.T) {
 	}
 	if got := reloaded2.Identity.ChatterSpeeds["too_slow"]; got != 0.5 {
 		t.Errorf("expected too_slow clamped to 0.5, got %v", got)
+	}
+}
+
+func TestUpdateConfigDefaultsAndRoundTrip(t *testing.T) {
+	loc := TestLocations(t.TempDir())
+	store, err := NewFileStore(loc)
+	if err != nil {
+		t.Fatalf("NewFileStore failed: %v", err)
+	}
+
+	// Legacy JSON without an "update" key defaults CheckOnStartup to true.
+	if err := os.MkdirAll(filepath.Dir(loc.ConfigFile), 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(loc.ConfigFile, []byte(`{"audio":{"master_volume":1.0}}`), 0o600); err != nil {
+		t.Fatalf("WriteFile legacy config failed: %v", err)
+	}
+	cfg, err := store.Load()
+	if err != nil {
+		t.Fatalf("initial Load failed: %v", err)
+	}
+	if !cfg.Update.CheckOnStartup {
+		t.Errorf("expected Update.CheckOnStartup to default to true")
+	}
+	if cfg.Update.SkippedVersion != "" {
+		t.Errorf("expected empty SkippedVersion by default, got %q", cfg.Update.SkippedVersion)
+	}
+
+	cfg.Update.CheckOnStartup = false
+	cfg.Update.SkippedVersion = "0.0.5"
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	reloaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+	if reloaded.Update.CheckOnStartup {
+		t.Errorf("expected Update.CheckOnStartup false after round-trip")
+	}
+	if reloaded.Update.SkippedVersion != "0.0.5" {
+		t.Errorf("expected SkippedVersion '0.0.5', got %q", reloaded.Update.SkippedVersion)
 	}
 }

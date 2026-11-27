@@ -659,6 +659,16 @@ func (mw *MainWindow) showSettingsDialog() {
 	ignoredDesc := widget.NewLabel("Muted Chatters (never spoken):")
 	ignoredDesc.Wrapping = fyne.TextWrapWord
 
+	checkUpdatesOnStartupCk := widget.NewCheck("Check for updates automatically on startup", nil)
+	checkUpdatesOnStartupCk.SetChecked(cfg.Update.CheckOnStartup)
+	updateStatusLbl := widget.NewLabel("")
+	updateStatusLbl.Wrapping = fyne.TextWrapWord
+	checkUpdatesNowBtn := widget.NewButtonWithIcon("Check for Updates Now", theme.ViewRefreshIcon(), func() {
+		TriggerManualUpdateCheck(mw.Window, mw.Session, func(msg string) {
+			updateStatusLbl.SetText(msg)
+		})
+	})
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Voices & Voice Packs", container.NewVScroll(container.NewVBox(
 			container.NewBorder(nil, nil, widget.NewLabelWithStyle("Audio Output Device:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), dlgDeviceRefreshBtn, dlgDeviceSel),
@@ -724,6 +734,12 @@ func (mw *MainWindow) showSettingsDialog() {
 				widget.NewLabel("Replay Last:"), hkReplayEntry,
 				widget.NewLabel("Panic Mute:"), hkPanicEntry,
 			),
+		))),
+		container.NewTabItem("Updates", container.NewVScroll(container.NewVBox(
+			widget.NewLabelWithStyle("Current Version: "+AppVersion, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			checkUpdatesOnStartupCk,
+			container.NewHBox(checkUpdatesNowBtn),
+			updateStatusLbl,
 		))),
 	)
 
@@ -810,6 +826,8 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Accessibility.Hotkeys.SkipCurrent = strings.TrimSpace(hkSkipEntry.Text)
 			c.Accessibility.Hotkeys.ReplayLast = strings.TrimSpace(hkReplayEntry.Text)
 			c.Accessibility.Hotkeys.PanicMute = strings.TrimSpace(hkPanicEntry.Text)
+
+			c.Update.CheckOnStartup = checkUpdatesOnStartupCk.Checked
 		})
 		updated := mw.Session.ConfigSnapshot()
 		mw.refreshOutputDeviceSelect()

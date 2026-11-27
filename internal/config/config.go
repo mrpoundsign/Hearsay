@@ -28,9 +28,16 @@ type Config struct {
 	Crowd          CrowdConfig         `json:"crowd"`
 	Accessibility  AccessibilityConfig `json:"accessibility"`
 	Translation    TranslationConfig   `json:"translation"`
+	Update         UpdateConfig        `json:"update"`
 	SavedStreamers []SavedStreamer     `json:"saved_streamers"`
 	Lineups        []Lineup            `json:"lineups"`
 	ActiveSlots    []StreamSlotConfig  `json:"active_slots"`
+}
+
+// UpdateConfig configures automatic GitHub Releases update checking.
+type UpdateConfig struct {
+	CheckOnStartup bool   `json:"check_on_startup"`
+	SkippedVersion string `json:"skipped_version,omitempty"`
 }
 
 // AudioConfig configures audio output, neural TTS models, and voice behavior.
@@ -234,6 +241,9 @@ func DefaultConfig() *Config {
 			TargetLang:    "en",
 			MinConfidence: 0.65,
 			Provider:      "mymemory",
+		},
+		Update: UpdateConfig{
+			CheckOnStartup: true,
 		},
 		SavedStreamers: []SavedStreamer{},
 		Lineups:        []Lineup{},

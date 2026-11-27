@@ -230,3 +230,35 @@ func TestChatterVoiceAndSpeedMultiplierResolution(t *testing.T) {
 		t.Fatalf("expected resolved speed 1.50 (1.20 * 1.25), got %v", gotSpd)
 	}
 }
+
+func TestUpdateCheckHeaderAndNoOpInTests(t *testing.T) {
+	a := fynetest.NewTempApp(t)
+	store := config.NewMemoryStore()
+	cfg, _ := store.Load()
+
+	sess := listener.NewSession(cfg, store)
+	defer func() { _ = sess.Close() }()
+
+	mockEnum := func() ([]audio.DeviceInfo, error) {
+		return []audio.DeviceInfo{{ID: "dev-1", Name: "Headphones (Stereo)", IsDefault: true}}, nil
+	}
+
+	mw := NewMainWindow(a, sess, mockEnum)
+	if mw.updateBtn == nil {
+		t.Fatalf("expected mw.updateBtn to be initialized")
+	}
+	if !mw.updateBtn.Hidden {
+		t.Errorf("expected mw.updateBtn to be hidden initially")
+	}
+	if NewHearsayUpdater() == nil {
+		t.Errorf("expected NewHearsayUpdater() to be non-nil")
+	}
+
+	called := false
+	TriggerManualUpdateCheck(mw.Window, sess, func(_ string) {
+		called = true
+	})
+	if called {
+		t.Errorf("expected TriggerManualUpdateCheck to be a no-op under testing.Testing()")
+	}
+}

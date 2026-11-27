@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"net/url"
@@ -8,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -15,6 +18,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/mrpoundsign/appinstaller/pkg/updater"
 
 	"github.com/mrpoundsign/Hearsay/assets"
 	"github.com/mrpoundsign/Hearsay/internal/config"
@@ -31,11 +36,12 @@ type MainWindow struct {
 	Session          *listener.Session
 	deviceEnumerator func() ([]audio.DeviceInfo, error)
 
-	mu         sync.Mutex
-	uiMu       sync.Mutex
-	isMiniMode bool
-	logEntries []listener.LogEntry
-	deviceMap  map[string]string
+	mu             sync.Mutex
+	uiMu           sync.Mutex
+	isMiniMode     bool
+	logEntries     []listener.LogEntry
+	deviceMap      map[string]string
+	pendingRelease *updater.ReleaseInfo
 
 	// Top Header & Accessibility Bar
 	activeBadgeLbl *widget.Label
@@ -47,6 +53,7 @@ type MainWindow struct {
 	speakEmotesCk  *widget.Check
 	channelIconsCk *widget.Check
 	miniToggleBtn  *TooltipButton
+	updateBtn      *TooltipButton
 	panicBtn       *TooltipButton
 	miniPanicBtn   *TooltipButton
 	tooltipLayer   *fyne.Container
@@ -143,7 +150,49 @@ func NewMainWindow(app fyne.App, session *listener.Session, devEnum func() ([]au
 	})
 
 	w.SetContent(mw.fullRoot)
+	mw.startStartupUpdateCheck()
 	return mw
+}
+
+func (mw *MainWindow) startStartupUpdateCheck() {
+	if testing.Testing() || mw.Session == nil {
+		return
+	}
+	cfg := mw.Session.ConfigSnapshot()
+	if cfg == nil || !cfg.Update.CheckOnStartup {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+
+		checker := NewHearsayUpdater()
+		rel, isNewer, err := checker.CheckLatest(ctx, AppVersion)
+		if err != nil || !isNewer || rel == nil {
+			return
+		}
+
+		fyne.Do(func() {
+			mw.mu.Lock()
+			mw.pendingRelease = rel
+			mw.mu.Unlock()
+
+			if mw.updateBtn != nil {
+				mw.updateBtn.SetText("⬆ Update v" + rel.Version)
+				mw.updateBtn.Show()
+			}
+			if mw.nowSpeakingLbl != nil && (mw.lastStatusText == "" || strings.HasPrefix(mw.lastStatusText, "Idle")) {
+				mw.nowSpeakingLbl.SetText("⬆ Update available: Hearsay v" + rel.Version + " — click 'Update' in the top bar.")
+			}
+
+			curCfg := mw.Session.ConfigSnapshot()
+			if curCfg != nil && curCfg.Update.SkippedVersion == rel.Version {
+				return
+			}
+			ShowHearsayUpdateDialog(mw.Window, mw.Session, rel)
+		})
+	}()
 }
 
 func (mw *MainWindow) buildUI(cfg *config.Config) {
@@ -205,6 +254,28 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 		},
 	)
 
+	mw.updateBtn = mw.newTipBtn(
+		"⬆ Update",
+		theme.DownloadIcon(),
+		"A newer version of Hearsay is available — click to review and install",
+		func() {
+			mw.mu.Lock()
+			rel := mw.pendingRelease
+			mw.mu.Unlock()
+			if rel != nil {
+				ShowHearsayUpdateDialog(mw.Window, mw.Session, rel)
+				return
+			}
+			TriggerManualUpdateCheck(mw.Window, mw.Session, func(msg string) {
+				if mw.nowSpeakingLbl != nil {
+					mw.nowSpeakingLbl.SetText(msg)
+				}
+			})
+		},
+	)
+	mw.updateBtn.Importance = widget.HighImportance
+	mw.updateBtn.Hide()
+
 	settingsBtn := mw.newTipBtn(
 		"Settings & Voices",
 		theme.SettingsIcon(),
@@ -234,6 +305,7 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 			mw.fontScaleSel,
 			mw.highContrastCk,
 			mw.miniToggleBtn,
+			mw.updateBtn,
 			settingsBtn,
 			mw.panicBtn,
 		),

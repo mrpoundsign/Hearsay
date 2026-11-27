@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.0.6 — 2026-11-26
+
+### Fixed
+- **GitHub Actions Release Publishing**:
+  - Added `GH_REPO` and corrected `--clobber` in `.github/workflows/release.yml` so GitHub Actions publishes release assets cleanly without needing a repository checkout in the release job.
+
+### Changed
+- **Documentation (`mrpoundsign.com/Hearsay`)**:
+  - Updated GitHub Pages (`index.html`) with configuration guides for the in-app GitHub Releases updater, smart installer pack preservation, anti-spam & chat hygiene filters, permitted auto-assign voice curation, and per-chatter voice speed multipliers.
+
+---
+
+## v0.0.5 — 2026-11-26
+
+### Added
+- **In-App SHA-256 Self-Updater & Smart Installer**:
+  - Added an integrated GitHub Releases updater powered by `appinstaller@v0.1.0` with a top-header **`⬆ Update`** badge, update dialog, and a new **Settings → Updates** tab (supporting startup update checks and SHA-256 verification).
+  - Updated `Hearsay-Setup.exe` with `IsInstalled` model-pack detection so existing neural TTS voice packs remain selected across silent updates and reinstalls.
+- **Concurrent Vertical & Horizontal YouTube Live Streams**:
+  - Automatically detects and joins both horizontal and vertical simultaneous YouTube Live streams on the same channel.
+- **macOS Application Icon Bundling**:
+  - Added `.icns` app bundle icon generation inside `build.sh` for macOS releases.
+
+### Changed
+- **Per-User Voice Speed Multiplier (#2)**:
+  - Changed per-chatter voice speed overrides from absolute values into multipliers applied on top of your global default speech speed so global speed changes scale custom voices proportionally.
+- **Core Audio & UI Engine**:
+  - Upgraded to `TownCrier v0.1.0` (including Windows WASAPI playback stall auto-recovery and Fyne v2.8.3) and unified GitHub Actions CI & SLSA OIDC release workflows.
+
+### Fixed
+- **Punctuated Hype-Spam Filtering**:
+  - Trimmed trailing pause punctuation before evaluating single-word hype-spam messages so punctuated hype emotes/words are filtered accurately.
+
+---
+
 ## v0.0.4 — 2026-11-10
 
 ### Added

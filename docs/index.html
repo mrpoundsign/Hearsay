@@ -38,9 +38,11 @@
                   <li><a class="sidebar-sublink" href="#zero-login">Zero-Login Quick Tune</a></li>
                   <li><a class="sidebar-sublink" href="#stereo-mixer">Multi-Stream Stereo Mixer</a></li>
                   <li><a class="sidebar-sublink" href="#crowd-control">Crowd Control &amp; Mention Bypass</a></li>
+                  <li><a class="sidebar-sublink" href="#chat-hygiene">Anti-Spam &amp; Chat Hygiene</a></li>
                   <li><a class="sidebar-sublink" href="#smart-voices">Smart Gender Voice Matching</a></li>
                   <li><a class="sidebar-sublink" href="#accessibility">Accessibility &amp; Mini Player</a></li>
                   <li><a class="sidebar-sublink" href="#shared-models">Shared Neural Voice Packs</a></li>
+                  <li><a class="sidebar-sublink" href="#updates">In-App Updates &amp; Installer</a></li>
                   <li><a class="sidebar-sublink" href="#compliance">Legal &amp; Licensing</a></li>
                 </ul>
               </li>
@@ -96,7 +98,7 @@
             <div class="grid-2">
               <div class="grid-item">
                 <h3>1-Click Platform &amp; URL Detection</h3>
-                <p>Select <strong>Twitch</strong>, <strong>YouTube</strong>, <strong>Kick</strong>, or <strong>TikTok</strong> and type a channel name—or simply paste any live stream URL directly into the Quick Tune bar.</p>
+                <p>Select <strong>Twitch</strong>, <strong>YouTube</strong>, <strong>Kick</strong>, or <strong>TikTok</strong> and type a channel name—or paste any live stream URL directly into the Quick Tune bar. Multi-feed channels on <strong>YouTube Live</strong> automatically join both horizontal and vertical concurrent broadcasts, and clickable chatter names in the Live Log open viewer profiles in your browser.</p>
               </div>
               <div class="grid-item">
                 <h3>Saved Streamers &amp; Multi-Platform Creators</h3>
@@ -139,25 +141,38 @@
               <li><strong>Per-Stream Crowd Filter Modes:</strong> Set each stream independently to <strong>All Chatters</strong>, <strong>Subs + VIPs + Mods</strong>, or <strong>Mods + Streamer + @Mentions</strong>.</li>
               <li><strong>Priority <code>@Mention</code> &amp; VIP Friend Bypass:</strong> Enter your own username(s) in <strong>Settings &rarr; Identity &amp; Friends</strong> (supporting optional platform scoping like <code>twitch:myname, youtube:@MyHandle</code>). Whenever someone replies to or <code>@mentions</code> you—or when the broadcaster or one of your starred <strong>VIP Friends</strong> speaks—their message automatically bypasses Crowd Control and cooldowns.</li>
               <li><strong>Automatic Self-Message Muting:</strong> When you type in chat yourself, Hearsay recognizes your configured username (case-insensitively and ignoring leading <code>@</code> symbols) and marks your message as <code>[YOU]</code> in the Live Log without reading your own words back to you.</li>
-              <li><strong>Hype-Spam &amp; Emote Deduplication:</strong> Automatically skips 1-word hype spam (<code>LUL</code>, <code>GG</code>, <code>KEKW</code>, <code>W</code>, <code>F</code>), collapses repeated emotes/words, and provides a 1-click <strong>Speak Emotes</strong> toggle right in the Live Log header.</li>
             </ul>
           </section>
 
-          <!-- Feature 4: Smart Gender Voice Matching -->
+          <!-- Feature 4: Anti-Spam & Chat Hygiene -->
+          <section id="chat-hygiene" class="card">
+            <span class="badge">Filters &amp; Hygiene</span>
+            <h2>Anti-Spam Filters, Copypasta Deduplication &amp; Natural Usernames</h2>
+            <p>Keep busy chat rooms listenable using configurable hygiene controls in <strong>Settings &rarr; Coalescence &amp; Crowd Control</strong>:</p>
+            <ul>
+              <li><strong>Strip Zalgo &amp; Braille/ASCII Art:</strong> Strips stacked Unicode combining marks and Braille dot/block art spam before TTS synthesis while preserving normal accented characters.</li>
+              <li><strong>Multi-User Copypasta Deduplication:</strong> Suppresses identical normalized messages repeated across chatters for a configurable window (<code>Off</code> or <code>15s</code>&ndash;<code>5m</code>, default <code>30s</code>) without ever blocking paid alerts or @mentions.</li>
+              <li><strong>Hype-Spam, Duplicate Words &amp; Command Filtering:</strong> Strips trailing pause punctuation before skipping 1-word hype spam (<code>LUL!</code>, <code>GG.</code>, <code>KEKW</code>), caps consecutive repeated words, and optionally skips known chatbots and <code>!command</code> lines.</li>
+              <li><strong>Naturalize Usernames:</strong> Automatically turns handle formatting like <code>xX_ShadowWolf_Xx</code> into natural spoken speech (<code>Shadow Wolf</code>).</li>
+            </ul>
+          </section>
+
+          <!-- Feature 5: Smart Gender Voice Matching -->
           <section id="smart-voices" class="card">
             <span class="badge">Chatter Identity</span>
-            <h2>Smart Gender Voice Matching &amp; Deterministic Chatter Voices</h2>
+            <h2>Smart Gender Voice Matching &amp; Curated Voice Pools</h2>
             <p>
-              Give every chatter in the room a distinct, recognizable neural voice without lifting a finger:
+              Give every chatter in the room a distinct, recognizable neural voice tailored to your preferences in <strong>Settings &rarr; Voices &amp; Voice Packs</strong>:
             </p>
             <ul>
-              <li><strong>Automatic Per-Chatter Voice Hashing:</strong> Deterministically assigns each chatter a consistent voice from your enabled neural voice packs for the entire session—without cluttering your custom voice override list.</li>
+              <li><strong>Automatic Per-Chatter Voice Hashing &amp; Speed Multipliers:</strong> Deterministically assigns each chatter a consistent voice for the session. Custom per-viewer speeds apply as proportional <strong>multipliers</strong> on top of your global default speech speed.</li>
+              <li><strong>Permitted Auto-Assign Voices Checklist:</strong> Curate the exact pool of neural voices used for random chatter assignment with <strong>All</strong>, <strong>None</strong>, <strong>&female; Feminine</strong>, and <strong>&male; Masculine</strong> quick-filter buttons and inline previews.</li>
               <li><strong>3-Tier Smart Gender Matching:</strong> Automatically pairs chatters with feminine, masculine, or neutral voices using:
                 <br>&bull; <strong>Twitch Pronouns API Cache:</strong> Asynchronous lookup and local disk caching of public pronouns via <code>alejo.io</code> (<code>she/her</code>, <code>he/him</code>, <code>they/them</code>).
                 <br>&bull; <strong>Self-Identification Detection:</strong> Recognizes explicit pronoun self-identification in chat messages.
                 <br>&bull; <strong>Offline First-Name Lexicon:</strong> Matches 360+ common given names inside usernames and display names, with a configurable fallback pool (<em>Balanced 50/50</em>, <em>Prefer Feminine</em>, <em>Prefer Masculine</em>, or <em>Default Voice</em>).
               </li>
-              <li><strong>Custom Voice Pinning:</strong> Click the <code>&ctdot;</code> menu on any chat message to pin a specific neural voice to a favorite chatter or streamer, toggle them as a Priority VIP, or mute them.</li>
+              <li><strong>Custom Voice Pinning:</strong> Click the <code>&ctdot;</code> menu on any chat message to pin a specific neural voice/speed multiplier to a favorite chatter, toggle them as a Priority VIP, or mute them.</li>
             </ul>
           </section>
 
@@ -187,6 +202,20 @@
               <li><strong>Supertonic-66M INT8 (Default):</strong> Ultra-fast 44.1 kHz flow-matching voices with minimal CPU and RAM usage.</li>
               <li><strong>Kokoro-82M Neural &amp; International (53 Voices):</strong> Studio-grade natural prosody across US/UK English, Spanish, French, Hindi, Italian, Japanese, Portuguese, and Mandarin (supports DirectML GPU acceleration and multi-threaded CPU).</li>
               <li><strong>Kitten v0.8 Mini &amp; Nano + Piper LibriTTS:</strong> Lightweight distilled models and 904-speaker VITS voice packs for maximum variety in crowded chat rooms.</li>
+              <li><strong>Hot-Swapping Output Devices &amp; 1-Click Model Updates:</strong> Select any playback sink (with Windows WASAPI stall auto-recovery) and check for or apply upstream SHA-256 verified voice pack updates from <strong>Settings &rarr; Voices &amp; Voice Packs</strong>.</li>
+            </ul>
+          </section>
+
+          <!-- Feature 7: In-App Updates & Guided Installer -->
+          <section id="updates" class="card">
+            <span class="badge">Installer &amp; Updates</span>
+            <h2>SHA-256 Verified Self-Updater &amp; Guided Installer</h2>
+            <p>
+              Keep Hearsay current effortlessly on Windows, macOS, and Linux:
+            </p>
+            <ul>
+              <li><strong>Smart Guided Setup (<code>Hearsay-Setup.exe</code>):</strong> Remembers previously installed TTS model packs across silent updates and upgrades cleanly with zero stray shortcuts or broken paths.</li>
+              <li><strong>Non-Intrusive Startup Update Checks:</strong> Configure automatic checks in <strong>Settings &rarr; Updates</strong>. When a new GitHub Release is available, a discrete <strong>&uarr; Update</strong> badge appears in the top header bar and verifies SHA-256 checksums before applying.</li>
             </ul>
           </section>
 

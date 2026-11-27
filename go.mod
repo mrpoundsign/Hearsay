@@ -5,8 +5,8 @@ go 1.27.1
 require (
 	fyne.io/fyne/v2 v2.8.3
 	github.com/gempir/go-twitch-irc/v4 v4.4.1
-	github.com/mrpoundsign/TownCrier v0.1.0
-	github.com/mrpoundsign/appinstaller v0.1.0
+	github.com/mrpoundsign/TownCrier v0.2.0
+	github.com/mrpoundsign/appinstaller v0.2.0
 )
 
 require (
@@ -17,6 +17,7 @@ require (
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/erni27/imcache v1.2.1 // indirect
@@ -42,16 +43,22 @@ require (
 	github.com/k2-fsa/sherpa-onnx-go-linux v1.13.8 // indirect
 	github.com/k2-fsa/sherpa-onnx-go-macos v1.13.8 // indirect
 	github.com/k2-fsa/sherpa-onnx-go-windows v1.13.8 // indirect
+	github.com/klauspost/compress v1.20.5 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.5.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/rymdport/portal v0.4.2 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/steampoweredtaco/gotiktoklive v0.0.4 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/tc-hib/go-winres v0.3.3 // indirect
+	github.com/tc-hib/winres v0.2.1 // indirect
+	github.com/urfave/cli/v2 v2.27.7 // indirect
+	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yatagai-mm/byrd v0.2.1 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
@@ -63,3 +70,5 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+tool github.com/tc-hib/go-winres

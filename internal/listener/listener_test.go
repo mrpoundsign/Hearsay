@@ -317,6 +317,12 @@ func (p *mockPlayer) Abort() {
 	p.mu.Unlock()
 }
 
+func (p *mockPlayer) Pause()                                  {}
+func (p *mockPlayer) Resume()                                 {}
+func (p *mockPlayer) ResumeFromSentenceStart()                {}
+func (p *mockPlayer) RewindSentence()                         {}
+func (p *mockPlayer) IsPaused() bool                          { return false }
+func (p *mockPlayer) MarkSentenceBoundary()                   {}
 func (p *mockPlayer) Stop()                                   { p.Abort() }
 func (p *mockPlayer) PanicStop()                              { p.Abort() }
 func (p *mockPlayer) ResetPanic()                             {}
@@ -517,5 +523,13 @@ func TestCrowdControllerCopypastaAndASCIIArt(t *testing.T) {
 	})
 	if len(sess.LogSnapshot()) != 1 {
 		t.Fatalf("expected Nightbot message to be logged when IgnoreKnownBots=false, got %d log entries", len(sess.LogSnapshot()))
+	}
+}
+
+func TestIsShortHypeSpamPausePunctuation(t *testing.T) {
+	for _, msg := range []string{"GG…", "LUL—"} {
+		if !IsShortHypeSpam(msg) {
+			t.Errorf("expected IsShortHypeSpam(%q) to be true", msg)
+		}
 	}
 }

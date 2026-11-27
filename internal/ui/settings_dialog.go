@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -241,31 +242,63 @@ func (mw *MainWindow) showSettingsDialog() {
 	if cfg.Identity.ChatterVoices != nil {
 		maps.Copy(chatterVoiceMap, cfg.Identity.ChatterVoices)
 	}
+	chatterSpeedMap := make(map[string]float64)
+	if cfg.Identity.ChatterSpeeds != nil {
+		maps.Copy(chatterSpeedMap, cfg.Identity.ChatterSpeeds)
+	}
 	chatterAssignUserEntry := widget.NewEntry()
 	chatterAssignUserEntry.SetPlaceHolder("Username (e.g. mocomade)")
 	chatterAssignVoiceSel := widget.NewSelect(voiceLabels, nil)
 	if len(voiceLabels) > 0 {
 		chatterAssignVoiceSel.SetSelected(voiceLabels[0])
 	}
+	chatterSpeedLbl := widget.NewLabel("Speed: 1.00x")
+	chatterSpeedSld := widget.NewSlider(0.5, 2.0)
+	chatterSpeedSld.Step = 0.05
+	chatterSpeedSld.SetValue(1.0)
+	chatterSpeedSld.OnChanged = func(val float64) {
+		chatterSpeedLbl.SetText(fmt.Sprintf("Speed: %.2fx", val))
+	}
 	chatterListBox := container.NewVBox()
 
 	var rebuildChatterVoiceRows func()
 	rebuildChatterVoiceRows = func() {
 		chatterListBox.RemoveAll()
-		keys := slices.Sorted(maps.Keys(chatterVoiceMap))
+		keySet := make(map[string]struct{}, len(chatterVoiceMap)+len(chatterSpeedMap))
+		for k := range chatterVoiceMap {
+			keySet[k] = struct{}{}
+		}
+		for k := range chatterSpeedMap {
+			keySet[k] = struct{}{}
+		}
+		keys := slices.Sorted(maps.Keys(keySet))
 		if len(keys) == 0 {
 			chatterListBox.Add(widget.NewLabelWithStyle("No custom chatter voice assignments yet.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}))
 		} else {
 			for _, u := range keys {
 				uname := u
 				vid := chatterVoiceMap[uname]
-				lbl := widget.NewLabel(fmt.Sprintf("%s → %s", uname, tts.VoiceDisplayName(vid)))
+				mult := chatterSpeedMap[uname]
+				if mult <= 0 {
+					mult = 1.0
+				}
+				voiceText := "(Auto Hash Voice)"
+				if strings.TrimSpace(vid) != "" {
+					voiceText = tts.VoiceDisplayName(vid)
+				}
+				rowText := fmt.Sprintf("%s → %s  •  %.2fx", uname, voiceText, mult)
+				if cfg.Audio.DefaultSpeed > 0 && math.Abs(cfg.Audio.DefaultSpeed-1.0) >= 0.005 {
+					eff := min(max(cfg.Audio.DefaultSpeed*mult, 0.25), 3.0)
+					rowText = fmt.Sprintf("%s → %s  •  %.2fx (%.2fx effective)", uname, voiceText, mult, eff)
+				}
+				lbl := widget.NewLabel(rowText)
 				lbl.Truncation = fyne.TextTruncateEllipsis
 				testBtn := mw.newTipBtn("", theme.MediaPlayIcon(), "Preview voice for "+uname, func() {
-					mw.Session.PreviewVoice(vid, fmt.Sprintf("Hello, this is %s speaking in chat!", uname))
+					mw.Session.PreviewVoiceWithSpeed(vid, mult, fmt.Sprintf("Hello, this is %s speaking in chat!", uname))
 				})
-				delBtn := mw.newTipBtn("", theme.DeleteIcon(), "Remove custom voice for "+uname, func() {
+				delBtn := mw.newTipBtn("", theme.DeleteIcon(), "Remove custom voice & speed for "+uname, func() {
 					delete(chatterVoiceMap, uname)
+					delete(chatterSpeedMap, uname)
 					rebuildChatterVoiceRows()
 				})
 				chatterListBox.Add(container.NewBorder(nil, nil, nil, container.NewHBox(testBtn, delBtn), lbl))
@@ -275,7 +308,7 @@ func (mw *MainWindow) showSettingsDialog() {
 	}
 	rebuildChatterVoiceRows()
 
-	addChatterVoiceBtn := mw.newTipBtn("Assign", theme.ContentAddIcon(), "Assign selected voice to this username", func() {
+	addChatterVoiceBtn := mw.newTipBtn("Assign", theme.ContentAddIcon(), "Assign selected voice and speed multiplier to this username", func() {
 		u := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(chatterAssignUserEntry.Text), "@"))
 		if u == "" {
 			return
@@ -285,7 +318,13 @@ func (mw *MainWindow) showSettingsDialog() {
 			vid = tts.VoiceIDFromLabel(chatterAssignVoiceSel.Selected)
 		}
 		chatterVoiceMap[u] = vid
+		if math.Abs(chatterSpeedSld.Value-1.0) < 0.005 {
+			delete(chatterSpeedMap, u)
+		} else {
+			chatterSpeedMap[u] = chatterSpeedSld.Value
+		}
 		chatterAssignUserEntry.SetText("")
+		chatterSpeedSld.SetValue(1.0)
 		rebuildChatterVoiceRows()
 	})
 
@@ -620,6 +659,16 @@ func (mw *MainWindow) showSettingsDialog() {
 	ignoredDesc := widget.NewLabel("Muted Chatters (never spoken):")
 	ignoredDesc.Wrapping = fyne.TextWrapWord
 
+	checkUpdatesOnStartupCk := widget.NewCheck("Check for updates automatically on startup", nil)
+	checkUpdatesOnStartupCk.SetChecked(cfg.Update.CheckOnStartup)
+	updateStatusLbl := widget.NewLabel("")
+	updateStatusLbl.Wrapping = fyne.TextWrapWord
+	checkUpdatesNowBtn := widget.NewButtonWithIcon("Check for Updates Now", theme.ViewRefreshIcon(), func() {
+		TriggerManualUpdateCheck(mw.Window, mw.Session, func(msg string) {
+			updateStatusLbl.SetText(msg)
+		})
+	})
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Voices & Voice Packs", container.NewVScroll(container.NewVBox(
 			container.NewBorder(nil, nil, widget.NewLabelWithStyle("Audio Output Device:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), dlgDeviceRefreshBtn, dlgDeviceSel),
@@ -636,8 +685,8 @@ func (mw *MainWindow) showSettingsDialog() {
 			container.NewBorder(nil, nil, widget.NewLabel("Permitted Auto-Assign Voices:"), permittedVoicesBtn, permittedVoicesLbl),
 			container.NewBorder(nil, nil, widget.NewLabel("Default Voice:"), previewDefaultBtn, defaultVoiceSel),
 			widget.NewSeparator(),
-			widget.NewLabelWithStyle("Custom Chatter Voice Assignments:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			container.NewBorder(nil, nil, nil, addChatterVoiceBtn, container.NewGridWithColumns(2, chatterAssignUserEntry, chatterAssignVoiceSel)),
+			widget.NewLabelWithStyle("Custom Chatter Voice & Speed Assignments:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewBorder(nil, nil, nil, addChatterVoiceBtn, container.NewGridWithColumns(3, chatterAssignUserEntry, chatterAssignVoiceSel, container.NewBorder(nil, nil, chatterSpeedLbl, nil, chatterSpeedSld))),
 			chatterScroll,
 		))),
 		container.NewTabItem("Coalescence & Crowd Control", container.NewVScroll(container.NewVBox(
@@ -686,6 +735,12 @@ func (mw *MainWindow) showSettingsDialog() {
 				widget.NewLabel("Panic Mute:"), hkPanicEntry,
 			),
 		))),
+		container.NewTabItem("Updates", container.NewVScroll(container.NewVBox(
+			widget.NewLabelWithStyle("Current Version: "+AppVersion, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			checkUpdatesOnStartupCk,
+			container.NewHBox(checkUpdatesNowBtn),
+			updateStatusLbl,
+		))),
 	)
 
 	d := dialog.NewCustomConfirm("Hearsay Settings & Voices", "Save Changes", "Cancel", tabs, func(save bool) {
@@ -723,6 +778,7 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Identity.PriorityChatters = parseCSVList(priorityEntry.Text)
 			c.Identity.IgnoredChatters = parseCSVList(ignoredEntry.Text)
 			c.Identity.ChatterVoices = maps.Clone(chatterVoiceMap)
+			c.Identity.ChatterSpeeds = maps.Clone(chatterSpeedMap)
 
 			c.Audio.OutputDeviceID = dlgDevMap[dlgDeviceSel.Selected]
 			c.Audio.EnabledModels = selectedModels
@@ -770,6 +826,8 @@ func (mw *MainWindow) showSettingsDialog() {
 			c.Accessibility.Hotkeys.SkipCurrent = strings.TrimSpace(hkSkipEntry.Text)
 			c.Accessibility.Hotkeys.ReplayLast = strings.TrimSpace(hkReplayEntry.Text)
 			c.Accessibility.Hotkeys.PanicMute = strings.TrimSpace(hkPanicEntry.Text)
+
+			c.Update.CheckOnStartup = checkUpdatesOnStartupCk.Checked
 		})
 		updated := mw.Session.ConfigSnapshot()
 		mw.refreshOutputDeviceSelect()

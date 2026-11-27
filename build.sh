@@ -94,11 +94,11 @@ fetch_mac_libs() {
 }
 
 run_lint() {
-    echo "==> Verifying code modernizations (go fix --diff)..."
+    echo "==> Verifying code modernizations (go fix -diff)..."
     local diff_output
     local err_file="$BUILD_DIR/gofix.err"
-    if ! diff_output=$(go fix --diff ./... 2>"$err_file"); then
-        echo "Error: 'go fix --diff ./...' failed or found unfixed modernizations:"
+    if ! diff_output=$(go fix -diff ./... 2>"$err_file"); then
+        echo "Error: 'go fix -diff ./...' failed or found unfixed modernizations:"
         if [ -n "$diff_output" ]; then
             echo "$diff_output"
         fi
@@ -126,7 +126,7 @@ run_lint() {
 
 run_test() {
     echo "==> Running unit tests with race detector..."
-    go test -race -timeout 180s -count=1 -v ./...
+    go test -race -timeout 180s -count=1 ./...
     echo "==> Running multi-count race stress tests (-count=5) on concurrent listener package..."
     go test -race -timeout 180s -count=5 ./internal/listener/...
     echo "✓ All unit and race tests passed!"
@@ -182,6 +182,11 @@ build_win() {
     CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
         go build -tags nosherpa -trimpath -ldflags="-H windowsgui -s -w -X main.AppVersion=${VERSION} -extldflags '-static-libgcc'" \
         -o "$BIN_DIR/Hearsay-Setup.exe" ./cmd/installer
+
+    if command -v x86_64-w64-mingw32-objdump &>/dev/null; then
+        echo "==> Verifying Hearsay-Setup.exe DLL Dependencies..."
+        x86_64-w64-mingw32-objdump -p "$BIN_DIR/Hearsay-Setup.exe" | grep "DLL Name"
+    fi
 
     rm -f "$payload_dir/hearsay-core"* "$payload_dir/"*.dll "$payload_dir/"*.so "$payload_dir/"*.dylib
     rm -f "$inst_payload_dir/hearsay-core"* "$inst_payload_dir/"*.dll "$inst_payload_dir/LICENSE" "$inst_payload_dir/THIRDPARTY_NOTICES.md"
@@ -291,14 +296,22 @@ package_mac() {
     cp -f "$BIN_DIR/libsherpa-onnx-c-api.dylib" "$macos_dir/"
     cp -f "$BIN_DIR/libsherpa-onnx-cxx-api.dylib" "$macos_dir/"
 
-    if [ -f "$ROOT_DIR/assets/icon.png" ]; then
-        python3 -c '
-import struct, sys
-png = open(sys.argv[1], "rb").read()
-chunk = b"ic08" + struct.pack(">I", len(png) + 8) + png
-icns = b"icns" + struct.pack(">I", len(chunk) + 8) + chunk
-open(sys.argv[2], "wb").write(icns)
-' "$ROOT_DIR/assets/icon.png" "$res_dir/icon.icns"
+    if [ -f "$ROOT_DIR/assets/icon.png" ] && command -v sips &>/dev/null && command -v iconutil &>/dev/null; then
+        local iconset="$BUILD_DIR/Hearsay.iconset"
+        rm -rf "$iconset"
+        mkdir -p "$iconset"
+        sips -z 16 16     "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_16x16.png" >/dev/null 2>&1 || true
+        sips -z 32 32     "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_16x16@2x.png" >/dev/null 2>&1 || true
+        sips -z 32 32     "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_32x32.png" >/dev/null 2>&1 || true
+        sips -z 64 64     "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_32x32@2x.png" >/dev/null 2>&1 || true
+        sips -z 128 128   "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_128x128.png" >/dev/null 2>&1 || true
+        sips -z 256 256   "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_128x128@2x.png" >/dev/null 2>&1 || true
+        sips -z 256 256   "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_256x256.png" >/dev/null 2>&1 || true
+        sips -z 512 512   "$ROOT_DIR/assets/icon.png" --out "$iconset/icon_256x256@2x.png" >/dev/null 2>&1 || true
+        iconutil -c icns "$iconset" -o "$res_dir/icon.icns" >/dev/null 2>&1 || true
+        rm -rf "$iconset"
+    elif [ -f "$ROOT_DIR/assets/icon.png" ]; then
+        cp "$ROOT_DIR/assets/icon.png" "$res_dir/icon.png"
     fi
 
     cat > "$contents_dir/Info.plist" <<EOF
@@ -396,6 +409,20 @@ with zipfile.ZipFile('$zip_file', 'w', zipfile.ZIP_DEFLATED) as zf:
     (cd "$staging" && tar -czf "$tar_file" .)
     rm -rf "$staging"
     echo "✓ Successfully packaged $tar_file"
+
+    echo "==> Generating release checksums..."
+    (
+        cd "$DIST_DIR"
+        rm -f checksums.txt SHA256SUMS.txt
+        TMP_SUMS="$(mktemp)"
+        for f in *; do
+            [ -f "$f" ] || continue
+            sha256sum "$f" >> "$TMP_SUMS"
+        done
+        sort -u -k2 -o checksums.txt "$TMP_SUMS"
+        rm -f "$TMP_SUMS"
+        cp -f checksums.txt SHA256SUMS.txt
+    )
 }
 
 clean() {
@@ -425,7 +452,6 @@ case "$TARGET" in
         run_lint
         ;;
     tidy)
-        GOPROXY=direct go get github.com/mrpoundsign/TownCrier@ce93647
         go mod tidy
         ;;
     test)

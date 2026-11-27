@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -14,6 +18,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/mrpoundsign/appinstaller/pkg/updater"
 
 	"github.com/mrpoundsign/Hearsay/assets"
 	"github.com/mrpoundsign/Hearsay/internal/config"
@@ -30,11 +36,12 @@ type MainWindow struct {
 	Session          *listener.Session
 	deviceEnumerator func() ([]audio.DeviceInfo, error)
 
-	mu         sync.Mutex
-	uiMu       sync.Mutex
-	isMiniMode bool
-	logEntries []listener.LogEntry
-	deviceMap  map[string]string
+	mu             sync.Mutex
+	uiMu           sync.Mutex
+	isMiniMode     bool
+	logEntries     []listener.LogEntry
+	deviceMap      map[string]string
+	pendingRelease *updater.ReleaseInfo
 
 	// Top Header & Accessibility Bar
 	activeBadgeLbl *widget.Label
@@ -46,6 +53,7 @@ type MainWindow struct {
 	speakEmotesCk  *widget.Check
 	channelIconsCk *widget.Check
 	miniToggleBtn  *TooltipButton
+	updateBtn      *TooltipButton
 	panicBtn       *TooltipButton
 	miniPanicBtn   *TooltipButton
 	tooltipLayer   *fyne.Container
@@ -142,7 +150,49 @@ func NewMainWindow(app fyne.App, session *listener.Session, devEnum func() ([]au
 	})
 
 	w.SetContent(mw.fullRoot)
+	mw.startStartupUpdateCheck()
 	return mw
+}
+
+func (mw *MainWindow) startStartupUpdateCheck() {
+	if testing.Testing() || mw.Session == nil {
+		return
+	}
+	cfg := mw.Session.ConfigSnapshot()
+	if cfg == nil || !cfg.Update.CheckOnStartup {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+
+		checker := NewHearsayUpdater()
+		rel, isNewer, err := checker.CheckLatest(ctx, AppVersion)
+		if err != nil || !isNewer || rel == nil {
+			return
+		}
+
+		fyne.Do(func() {
+			mw.mu.Lock()
+			mw.pendingRelease = rel
+			mw.mu.Unlock()
+
+			if mw.updateBtn != nil {
+				mw.updateBtn.SetText("⬆ Update v" + rel.Version)
+				mw.updateBtn.Show()
+			}
+			if mw.nowSpeakingLbl != nil && (mw.lastStatusText == "" || strings.HasPrefix(mw.lastStatusText, "Idle")) {
+				mw.nowSpeakingLbl.SetText("⬆ Update available: Hearsay v" + rel.Version + " — click 'Update' in the top bar.")
+			}
+
+			curCfg := mw.Session.ConfigSnapshot()
+			if curCfg != nil && curCfg.Update.SkippedVersion == rel.Version {
+				return
+			}
+			ShowHearsayUpdateDialog(mw.Window, mw.Session, rel)
+		})
+	}()
 }
 
 func (mw *MainWindow) buildUI(cfg *config.Config) {
@@ -204,6 +254,28 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 		},
 	)
 
+	mw.updateBtn = mw.newTipBtn(
+		"⬆ Update",
+		theme.DownloadIcon(),
+		"A newer version of Hearsay is available — click to review and install",
+		func() {
+			mw.mu.Lock()
+			rel := mw.pendingRelease
+			mw.mu.Unlock()
+			if rel != nil {
+				ShowHearsayUpdateDialog(mw.Window, mw.Session, rel)
+				return
+			}
+			TriggerManualUpdateCheck(mw.Window, mw.Session, func(msg string) {
+				if mw.nowSpeakingLbl != nil {
+					mw.nowSpeakingLbl.SetText(msg)
+				}
+			})
+		},
+	)
+	mw.updateBtn.Importance = widget.HighImportance
+	mw.updateBtn.Hide()
+
 	settingsBtn := mw.newTipBtn(
 		"Settings & Voices",
 		theme.SettingsIcon(),
@@ -233,6 +305,7 @@ func (mw *MainWindow) buildUI(cfg *config.Config) {
 			mw.fontScaleSel,
 			mw.highContrastCk,
 			mw.miniToggleBtn,
+			mw.updateBtn,
 			settingsBtn,
 			mw.panicBtn,
 		),
@@ -623,6 +696,9 @@ func (mw *MainWindow) buildLiveLogWidget() {
 					}
 				}
 			}
+			if streamTip := formatHearsayStreamTooltip(entry); streamTip != "" {
+				tip += "\n" + streamTip
+			}
 			userLbl.SetChatter(entry.UserName+":", userCol, tip, onUserTap)
 
 			msgLbl.SetText(entry.Text)
@@ -893,6 +969,20 @@ func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 	platIcon.FillMode = canvas.ImageFillContain
 	platIcon.SetMinSize(fyne.NewSize(18, 18))
 
+	var leadingIcon fyne.CanvasObject = platIcon
+	if st.Status == "connected" && st.StreamCount > 1 {
+		countCircle := canvas.NewCircle(color.NRGBA{R: 0x22, G: 0xC5, B: 0x5E, A: 0xFF})
+		countTxt := canvas.NewText(strconv.Itoa(st.StreamCount), color.NRGBA{R: 0x0F, G: 0x17, B: 0x2A, A: 0xFF})
+		countTxt.TextStyle = fyne.TextStyle{Bold: true}
+		countTxt.TextSize = 10
+		countTxt.Alignment = fyne.TextAlignCenter
+		countBadge := container.NewGridWrap(
+			fyne.NewSize(15, 15),
+			container.NewStack(countCircle, container.NewCenter(countTxt)),
+		)
+		leadingIcon = container.NewHBox(platIcon, container.NewCenter(countBadge))
+	}
+
 	titleLbl := widget.NewLabelWithStyle(
 		fmt.Sprintf("%s %s", statusBadge, st.Config.EffectiveLabel()),
 		fyne.TextAlignLeading,
@@ -938,7 +1028,7 @@ func (mw *MainWindow) buildSlotCard(st listener.SlotState) fyne.CanvasObject {
 	})
 	discBtn.Importance = widget.DangerImportance
 
-	headerRow := container.NewBorder(nil, nil, platIcon, container.NewHBox(muteBtn, saveBtn, discBtn), titleLbl)
+	headerRow := container.NewBorder(nil, nil, leadingIcon, container.NewHBox(muteBtn, saveBtn, discBtn), titleLbl)
 
 	// Volume & Stereo Pan controls
 	volLbl := widget.NewLabel(fmt.Sprintf("Vol: %.0f%%", st.Config.Volume*100))
@@ -1297,29 +1387,52 @@ func (mw *MainWindow) showAssignVoiceDialog(username string) {
 	options := append([]string{"(Auto Hash Voice)"}, voiceLabels...)
 	voiceSel := widget.NewSelect(options, nil)
 
-	currentVoice := cfg.Identity.ChatterVoices[strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))]
+	cleanUser := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))
+	currentVoice := cfg.Identity.ChatterVoices[cleanUser]
 	if currentVoice != "" {
 		voiceSel.SetSelected(tts.VoiceDisplayName(currentVoice))
 	} else {
 		voiceSel.SetSelected("(Auto Hash Voice)")
 	}
 
-	previewBtn := mw.newTipBtn("Preview Voice", theme.MediaPlayIcon(), "Hear a sample of this voice", func() {
+	initMult := 1.0
+	if m, ok := cfg.Identity.ChatterSpeeds[cleanUser]; ok && m > 0 {
+		initMult = m
+	}
+	baseSpeed := cfg.Audio.DefaultSpeed
+	if baseSpeed <= 0 {
+		baseSpeed = 1.0
+	}
+	formatMultText := func(mult float64) string {
+		eff := min(max(baseSpeed*mult, 0.25), 3.0)
+		return fmt.Sprintf("Speed Multiplier: %.2fx (Effective: %.2fx)", mult, eff)
+	}
+	speedLbl := widget.NewLabel(formatMultText(initMult))
+	speedSld := widget.NewSlider(0.5, 2.0)
+	speedSld.Step = 0.05
+	speedSld.SetValue(initMult)
+	speedSld.OnChanged = func(val float64) {
+		speedLbl.SetText(formatMultText(val))
+	}
+
+	previewBtn := mw.newTipBtn("Preview Voice", theme.MediaPlayIcon(), "Hear a sample of this voice at the selected speed multiplier", func() {
 		choice := voiceSel.Selected
 		vid := labelToID[choice]
 		if vid == "" && choice != "(Auto Hash Voice)" {
 			vid = tts.VoiceIDFromLabel(choice)
 		}
-		mw.Session.PreviewVoice(vid, fmt.Sprintf("Hello, this is %s speaking in chat!", username))
+		mw.Session.PreviewVoiceWithSpeed(vid, speedSld.Value, fmt.Sprintf("Hello, this is %s speaking in chat!", username))
 	})
 
 	content := container.NewVBox(
-		widget.NewLabel(fmt.Sprintf("Select a neural TTS voice for %s:", username)),
+		widget.NewLabel(fmt.Sprintf("Select a neural TTS voice and speed multiplier for %s:", username)),
 		voiceSel,
+		speedLbl,
+		speedSld,
 		previewBtn,
 	)
 
-	d := dialog.NewCustomConfirm("Assign Voice to "+username, "Save Voice", "Cancel", content, func(ok bool) {
+	d := dialog.NewCustomConfirm("Assign Voice & Speed to "+username, "Save Voice", "Cancel", content, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -1331,9 +1444,9 @@ func (mw *MainWindow) showAssignVoiceDialog(username string) {
 				vid = tts.VoiceIDFromLabel(choice)
 			}
 		}
-		mw.Session.AssignChatterVoice(username, vid)
+		mw.Session.AssignChatterVoiceAndSpeed(username, vid, speedSld.Value)
 	}, mw.Window)
-	d.Resize(fyne.NewSize(460, 220))
+	d.Resize(fyne.NewSize(460, 290))
 	d.Show()
 }
 
@@ -1406,5 +1519,35 @@ func formatSkipReason(reason string) string {
 			return "[SKIP]"
 		}
 		return "[SKIP]"
+	}
+}
+
+func formatHearsayStreamTooltip(entry listener.LogEntry) string {
+	orient := strings.ToLower(strings.TrimSpace(entry.StreamOrientation))
+	var orientLabel string
+	switch orient {
+	case "vertical":
+		orientLabel = "Vertical"
+	case "horizontal":
+		orientLabel = "Horizontal"
+	}
+	title := strings.TrimSpace(entry.StreamTitle)
+	sid := strings.TrimSpace(entry.StreamID)
+	if orientLabel == "" && title == "" && sid == "" {
+		return ""
+	}
+	header := "Stream"
+	if orientLabel != "" {
+		header += " (" + orientLabel + ")"
+	}
+	switch {
+	case title != "" && sid != "":
+		return header + ": " + title + " (" + sid + ")"
+	case title != "":
+		return header + ": " + title
+	case sid != "":
+		return header + ": " + sid
+	default:
+		return header
 	}
 }

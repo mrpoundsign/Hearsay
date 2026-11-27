@@ -149,6 +149,51 @@ func SelectChatterVoice(ev chat.Event, slot config.StreamSlotConfig, cfg *config
 	return SelectChatterVoiceWithPronouns(ev, slot, cfg, availableVoices, nil)
 }
 
+// SelectChatterSpeedMultiplier returns the configured per-chatter speed multiplier (defaulting to 1.0).
+// It checks both "platform:username" and "username" keys in cfg.Identity.ChatterSpeeds.
+func SelectChatterSpeedMultiplier(ev chat.Event, cfg *config.Config) float64 {
+	if cfg == nil || len(cfg.Identity.ChatterSpeeds) == 0 {
+		return 1.0
+	}
+	userKey := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ev.UserName), "@"))
+	if userKey == "" {
+		userKey = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(ev.DisplayName), "@"))
+	}
+	if userKey == "" {
+		return 1.0
+	}
+	platLower := strings.ToLower(strings.TrimSpace(ev.Platform))
+	if platLower != "" {
+		if mult, ok := cfg.Identity.ChatterSpeeds[platLower+":"+userKey]; ok && mult > 0 {
+			return mult
+		}
+	}
+	if mult, ok := cfg.Identity.ChatterSpeeds[userKey]; ok && mult > 0 {
+		return mult
+	}
+	return 1.0
+}
+
+// ResolveChatterSpeed computes the effective TTS synthesis speed for a chatter by multiplying
+// the global default speed (cfg.Audio.DefaultSpeed) by the chatter's speed multiplier, clamped to [0.25, 3.0].
+func ResolveChatterSpeed(ev chat.Event, cfg *config.Config) float64 {
+	baseSpeed := 1.0
+	if cfg != nil && cfg.Audio.DefaultSpeed > 0 {
+		baseSpeed = cfg.Audio.DefaultSpeed
+	}
+	mult := SelectChatterSpeedMultiplier(ev, cfg)
+	if mult <= 0 {
+		mult = 1.0
+	}
+	speed := baseSpeed * mult
+	if speed < 0.25 {
+		speed = 0.25
+	} else if speed > 3.0 {
+		speed = 3.0
+	}
+	return speed
+}
+
 // SelectChatterVoiceWithPronouns resolves the TTS voice ID for a chatter using explicit overrides,
 // smart gender detection (pronoun cache + username analysis), and deterministic hashing without mutating ChatterVoices.
 func SelectChatterVoiceWithPronouns(ev chat.Event, slot config.StreamSlotConfig, cfg *config.Config, availableVoices []string, pronouns *chat.PronounCache) string {

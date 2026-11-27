@@ -6,16 +6,19 @@
 
 - **Visual Identity**: Obsidian Slate (`#0F172A`), Chrome White (`#F8FAFC`), and Emerald Mint (`#34D399`).
 - **Shared Model & Cache Directories**: Uses `tts.DefaultModelDir()` and `tts.DefaultSharedCacheDir()` (`%LOCALAPPDATA%\com.github.mrpoundsign.towncrier\...`) so models downloaded in either TownCrier or Hearsay work in both without duplication.
+- **Explicit Scope Boundary (No Plugin/Bot Host)**: Hearsay is a viewer-only accessibility app and intentionally does **not** host TownCrier plugins (`internal/pluginhost`) or bot automation (`internal/bot`).
 
 ## 2. Quality Gate & Build Rules
 
 1. **Pre-Commit Quality Gate** (run inside WSL via `./build.sh lint` and `./build.sh test`):
-   - `go fix --diff ./...` (must report 0 diff)
+   - `go fix -diff ./...` (must report 0 diff)
    - `golangci-lint-v2 run ./...` (must report 0 issues)
-   - `go test -race -count=1 -v ./...` (all tests must pass)
+   - `go test -race -count=1 ./...` (all unit & race tests must pass)
 2. **Always Build via WSL (`./build.sh win`)**:
    - Never run `go build` natively on Windows.
    - All build outputs belong in `build/bin/` (`Hearsay.exe`, `Hearsay-Setup.exe`, `hearsay-core.exe`).
-3. **Strict Test Isolation**:
+3. **Unified Installer & In-App Self-Updater**:
+   - Uses `github.com/mrpoundsign/appinstaller@v0.1.0` (`pkg/installer`, `pkg/installerui`, `pkg/updater`, `pkg/updaterui`) with startup & manual update checks pointing to `mrpoundsign/Hearsay` GitHub Releases.
+4. **Strict Test Isolation**:
    - Tests must NEVER touch real `%APPDATA%` or `~/.config` directories. Always use `config.NewMemoryStore()` or `config.TestLocations(t.TempDir())`.
    - Always inject mock audio device enumerators in headless UI tests.

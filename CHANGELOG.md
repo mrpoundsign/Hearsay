@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.0.7 — 2026-11-27
+
+### Changed
+- **Compressed Setup & Portable Payloads (`appinstaller@v0.2.0`) & Windows Metadata**:
+  - Switched build-time embedded payloads to zstd-compressed archives (`Hearsay-Setup.exe` reduced from ~77.2 MB to ~42.4 MB) with `.payload-sha256` fast-path caching for portable launches.
+  - Migrated Windows executables to `go-winres` (embedding application icon, GUI DPI manifest, and version metadata) and added `.githooks/pre-commit` quality gates.
+  - Upgraded shared core dependency to `TownCrier v0.2.0` (native platform emote & Twitch cheermote parsing improvements).
+
+---
+
 ## v0.0.6 — 2026-11-26
 
 ### Fixed
